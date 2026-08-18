@@ -1,0 +1,125 @@
+---
+import Icon from './Icon.astro';
+import type { Task } from '../data/types';
+
+interface Props {
+  task: Task;
+  compact?: boolean;
+}
+
+const { task, compact = false } = Astro.props;
+
+const categoryLabel: Record<Task['category'], string> = {
+  fundamento: 'Fundamento',
+  obediencia: 'Orden',
+  habito: 'Hábito',
+  truco: 'Truco',
+  mental: 'Mental',
+  deporte: 'Deporte',
+};
+---
+
+<article class="task-card card" data-task-id={task.id} data-state="disponible">
+  <a class="task-link" href={`/tarea/${task.id}`}>
+    <span class="icon-tile"><Icon name={task.icon} size={22} /></span>
+    <span class="task-head">
+      <span class="task-title">
+        <span class="num">{String(task.order).padStart(2, '0')}</span>
+        {task.title}
+      </span>
+      <span class="cluster small muted">
+        <span class="badge">{categoryLabel[task.category]}</span>
+        <span class="dots" title={`Dificultad ${task.difficulty} de 5`} aria-label={`Dificultad ${task.difficulty} de 5`}>
+          {Array.from({ length: 5 }).map((_, i) => <i class:list={{ on: i < task.difficulty }} />)}
+        </span>
+        <span class="state-chip" data-state-chip>Disponible</span>
+      </span>
+    </span>
+  </a>
+
+  {!compact && <p class="task-desc small muted">{task.description}</p>}
+
+  <div class="task-foot">
+    <span class="small muted">
+      <Icon name="timer" size={14} /> {task.session.minutes} min × {task.session.perDay}/día
+    </span>
+    <span class="progress-mini" aria-hidden="true">
+      <span class="progress-mini__bar" data-progress-bar style="width:0%"></span>
+    </span>
+    <span class="small muted"><span data-sessions>0</span>{`/${task.goalSessions}`}</span>
+  </div>
+</article>
+
+<style>
+  .task-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    transition: border-color 0.2s var(--ease), transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
+  }
+  .task-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-m); }
+  @media (hover: hover) and (min-width: 48rem) {
+    .task-card:hover { transform: translateY(-2px); }
+  }
+
+  .task-link {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-xs);
+    text-decoration: none;
+  }
+  .task-link::after { content: ''; position: absolute; inset: 0; }
+  .task-card { position: relative; }
+
+  .task-head { display: flex; flex-direction: column; gap: var(--space-3xs); min-width: 0; }
+  .task-title { font-weight: 650; line-height: 1.25; text-wrap: balance; }
+  .num {
+    display: inline-block;
+    margin-inline-end: 0.4em;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--step--1);
+  }
+
+  .task-desc {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .task-foot {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2xs);
+    margin-block-start: auto;
+    padding-block-start: var(--space-2xs);
+    border-top: 1px dashed var(--border);
+  }
+  .task-foot span { display: inline-flex; align-items: center; gap: 0.35em; white-space: nowrap; }
+
+  .progress-mini {
+    flex: 1;
+    height: 5px;
+    min-width: 2rem;
+    border-radius: var(--radius-full);
+    background: var(--bg-sunken);
+    overflow: hidden;
+  }
+  .progress-mini__bar {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.4s var(--ease);
+  }
+
+  .state-chip {
+    padding: 0.1em 0.6em;
+    border-radius: var(--radius-full);
+    background: var(--bg-sunken);
+    font-weight: 600;
+  }
+  [data-state='dominado'] .state-chip { background: var(--accent-soft); color: var(--accent); }
+  [data-state='progreso'] .state-chip { background: var(--warn-soft); color: var(--warn); }
+  [data-state='bloqueada'] .state-chip { color: var(--lock); }
+</style>

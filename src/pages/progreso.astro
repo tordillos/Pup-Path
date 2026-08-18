@@ -1,0 +1,343 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Icon from '../components/Icon.astro';
+import { phases } from '../data/phases';
+import { tasksByPhase } from '../data/tasks';
+
+const categories = [
+  { id: 'fundamento', label: 'Fundamentos', icon: 'paw' as const },
+  { id: 'obediencia', label: 'Órdenes', icon: 'sit' as const },
+  { id: 'habito', label: 'Hábitos', icon: 'bed' as const },
+  { id: 'truco', label: 'Trucos', icon: 'star' as const },
+  { id: 'mental', label: 'Trabajo mental', icon: 'brain' as const },
+  { id: 'deporte', label: 'Deporte', icon: 'trophy' as const },
+];
+---
+
+<BaseLayout title="Progreso">
+  <div class="container page">
+    <header class="page-head">
+      <h1>Tu progreso</h1>
+      <p class="muted">Todo lo que has registrado, por fase y por tipo de tarea.</p>
+    </header>
+
+    <!-- Spinner de carga -->
+    <div id="progreso-spinner" class="page-loader">
+      <div class="spinner"></div>
+      <p class="small muted">Cargando progreso...</p>
+    </div>
+
+    <!-- Estado cuando NO hay mascota activa -->
+    <div id="progreso-no-pet-card" class="card empty" style="text-align: center; padding: var(--space-m);" hidden>
+      <p class="lead" style="margin-bottom: var(--space-2xs);">🐾 No tienes ninguna mascota activa</p>
+      <p class="small muted" style="margin-bottom: var(--space-s);">Para registrar sesiones y ver estadísticas de progreso, añade una mascota en Ajustes o únete a una compartida.</p>
+      <a href="/ajustes" class="btn btn--primary">Gestionar mascotas en Ajustes</a>
+    </div>
+
+    <!-- Contenido de progreso -->
+    <div id="progreso-content" hidden>
+      <p class="empty card" data-empty hidden>
+        Todavía no has registrado ninguna sesión para <strong id="progreso-dog-name">tu mascota</strong>. Empieza por el
+        <a href="/timeline">timeline</a> o por la sugerencia de <a href="/">hoy</a>.
+      </p>
+
+      <section class="grid-auto stats">
+        <article class="card stat"><strong data-stat="percent">0%</strong><span class="small muted">del plan completado</span></article>
+        <article class="card stat"><strong data-stat="dominados">0</strong><span class="small muted">tareas dominadas</span></article>
+        <article class="card stat"><strong data-stat="progreso">0</strong><span class="small muted">tareas en progreso</span></article>
+        <article class="card stat"><strong data-stat="sesiones">0</strong><span class="small muted">sesiones registradas</span></article>
+      </section>
+
+      <section class="ring-block card">
+        <svg class="ring" viewBox="0 0 120 120" role="img" aria-label="Progreso general">
+          <circle class="ring__track" cx="60" cy="60" r="52" />
+          <circle class="ring__value" cx="60" cy="60" r="52" data-ring />
+          <text class="ring__text" x="60" y="60" dominant-baseline="middle" text-anchor="middle" data-ring-text>0%</text>
+        </svg>
+        <div>
+          <h2 class="small muted">Fase actual</h2>
+          <p class="ring-phase" data-current-phase>Fase 1 · Fundamentos</p>
+          <p class="small muted" data-current-next>Empieza por responder a su nombre.</p>
+        </div>
+      </section>
+
+      <section class="block">
+        <h2><Icon name="flag" size={20} /> Por fase</h2>
+        <ul class="bars">
+          {phases.map((phase) => (
+            <li style={`--phase:${phase.color}`} data-phase-row={phase.id}>
+              <span class="bars__icon"><Icon name={phase.icon} size={18} /></span>
+              <span class="bars__label">{phase.title}</span>
+              <span class="bars__track"><span class="bars__bar" data-bar style="width:0%"></span></span>
+              <span class="small muted bars__count"><span data-done>0</span>/{tasksByPhase(phase.id).length}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section class="block">
+        <h2><Icon name="chart" size={20} /> Por tipo de tarea</h2>
+        <ul class="bars">
+          {categories.map((cat) => (
+            <li style="--phase: var(--accent)" data-cat-row={cat.id}>
+              <span class="bars__icon"><Icon name={cat.icon} size={18} /></span>
+              <span class="bars__label">{cat.label}</span>
+              <span class="bars__track"><span class="bars__bar" data-bar style="width:0%"></span></span>
+              <span class="small muted bars__count"><span data-done>0</span>/<span data-total>0</span></span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section class="block">
+        <h2><Icon name="clock" size={20} /> Últimas actualizaciones</h2>
+        <ul class="recent" data-recent>
+          <li class="muted small">Nada registrado todavía.</li>
+        </ul>
+      </section>
+    </div>
+  </div>
+</BaseLayout>
+
+<script>
+  import { load, ensureProgressLoaded } from '../scripts/progress';
+  import { stateOf, stats } from '../scripts/engine';
+  import { orderedTasks, tasks, tasksByPhase } from '../data/tasks';
+  import { phaseById, phases } from '../data/phases';
+  import { icon, onProgressChange } from '../scripts/ui';
+  import { getCurrentUser } from '../scripts/auth';
+  import type { Category } from '../data/types';
+
+  const fmt = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' });
+  const STATE_LABEL = { dominado: 'Dominado', progreso: 'En progreso', disponible: 'Disponible', bloqueada: 'Bloqueada' };
+  const CIRCUMFERENCE = 2 * Math.PI * 52;
+
+  function paint() {
+    const progress = load();
+    const dogNameEl = document.getElementById('progreso-dog-name');
+    if (dogNameEl && progress.dogName) dogNameEl.textContent = progress.dogName;
+
+    const s = stats(progress);
+
+    const empty = document.querySelector<HTMLElement>('[data-empty]');
+    if (empty) {
+      empty.hidden = s.sesiones > 0 || s.dominados > 0;
+    }
+
+    const set = (key: string, value: string) => {
+      const el = document.querySelector(`[data-stat="${key}"]`);
+      if (el) el.textContent = value;
+    };
+    set('percent', `${s.percent}%`);
+    set('dominados', String(s.dominados));
+    set('progreso', String(s.enProgreso));
+    set('sesiones', String(s.sesiones));
+
+    const ring = document.querySelector<SVGCircleElement>('[data-ring]');
+    if (ring) {
+      ring.style.strokeDasharray = String(CIRCUMFERENCE);
+      ring.style.strokeDashoffset = String(CIRCUMFERENCE * (1 - s.percent / 100));
+    }
+    const ringText = document.querySelector('[data-ring-text]');
+    if (ringText) ringText.textContent = `${s.percent}%`;
+
+    const phase = phaseById(s.fase);
+    const phaseEl = document.querySelector('[data-current-phase]');
+    if (phaseEl) phaseEl.textContent = `Fase ${phase.id} · ${phase.title}`;
+
+    const nextTask = orderedTasks.find((t) => progress.tasks[t.id]?.status !== 'dominado');
+    const nextEl = document.querySelector('[data-current-next]');
+    if (nextEl) nextEl.textContent = nextTask ? `Siguiente: ${nextTask.title}` : 'Plan completado.';
+
+    for (const p of phases) {
+      const row = document.querySelector<HTMLElement>(`[data-phase-row="${p.id}"]`);
+      if (!row) continue;
+      const list = tasksByPhase(p.id);
+      const done = list.filter((t) => stateOf(t, progress) === 'dominado').length;
+      row.querySelector<HTMLElement>('[data-bar]')!.style.width = `${Math.round((done / list.length) * 100)}%`;
+      row.querySelector('[data-done]')!.textContent = String(done);
+    }
+
+    const catTotals: Record<Category, number> = { fundamento: 0, obediencia: 0, habito: 0, truco: 0, mental: 0, deporte: 0 };
+    const catDone: Record<Category, number> = { fundamento: 0, obediencia: 0, habito: 0, truco: 0, mental: 0, deporte: 0 };
+    for (const t of tasks) {
+      catTotals[t.category]++;
+      if (stateOf(t, progress) === 'dominado') catDone[t.category]++;
+    }
+    document.querySelectorAll<HTMLElement>('[data-cat-row]').forEach((row) => {
+      const cat = row.dataset.catRow as Category;
+      const total = catTotals[cat];
+      const done = catDone[cat];
+      const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+      row.querySelector<HTMLElement>('[data-bar]')!.style.width = `${pct}%`;
+      row.querySelector('[data-done]')!.textContent = String(done);
+      row.querySelector('[data-total]')!.textContent = String(total);
+    });
+
+    const recentEl = document.querySelector<HTMLElement>('[data-recent]');
+    if (recentEl) {
+      const entries = Object.entries(progress.tasks)
+        .filter(([, v]) => v.updatedAt)
+        .sort((a, b) => new Date(b[1].updatedAt).getTime() - new Date(a[1].updatedAt).getTime())
+        .slice(0, 5);
+
+      if (entries.length === 0) {
+        recentEl.innerHTML = '<li class="muted small">Nada registrado todavía.</li>';
+      } else {
+        recentEl.innerHTML = entries
+          .map(([id, entry]) => {
+            const task = tasks.find((t) => t.id === id);
+            if (!task) return '';
+            const state = stateOf(task, progress);
+            return `
+              <li class="recent__item">
+                <span class="icon-tile icon-tile--sm">${icon(task.icon, 16)}</span>
+                <span class="recent__title"><a href="/tarea/${task.id}">${task.title}</a></span>
+                <span class="badge">${STATE_LABEL[state]}</span>
+                <time class="small muted" datetime="${entry.updatedAt}">${fmt.format(new Date(entry.updatedAt))}</time>
+              </li>`;
+          })
+          .join('');
+      }
+    }
+  }
+
+  async function initProgreso() {
+    const spinner = document.getElementById('progreso-spinner');
+    const noPetCard = document.getElementById('progreso-no-pet-card');
+    const progresoContent = document.getElementById('progreso-content');
+
+    const user = await getCurrentUser();
+    if (!user) {
+      window.location.href = '/login?redirect=/progreso';
+      return;
+    }
+
+    if (spinner) spinner.hidden = false;
+    const progress = await ensureProgressLoaded();
+    if (spinner) spinner.hidden = true;
+
+    if (!progress.dogName) {
+      if (noPetCard) noPetCard.hidden = false;
+      if (progresoContent) progresoContent.hidden = true;
+      return;
+    }
+
+    if (noPetCard) noPetCard.hidden = true;
+    if (progresoContent) progresoContent.hidden = false;
+
+    paint();
+  }
+
+  document.addEventListener('astro:page-load', initProgreso);
+  onProgressChange(paint);
+</script>
+
+<style>
+  .page { padding-block: var(--space-l); }
+  .page-head { margin-block-end: var(--space-m); }
+
+  .empty { margin-block-end: var(--space-m); }
+
+  .stats { margin-block-end: var(--space-m); }
+  .stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: var(--space-3xs);
+    padding: var(--space-m);
+  }
+  .stat strong { font-size: var(--step-3); line-height: 1; color: var(--accent); }
+
+  .ring-block {
+    display: flex;
+    align-items: center;
+    gap: var(--space-m);
+    padding: var(--space-m);
+    margin-block-end: var(--space-m);
+  }
+  .ring { width: 96px; height: 96px; transform: rotate(-90deg); flex-shrink: 0; }
+  .ring__track {
+    fill: none;
+    stroke: var(--bg-sunken);
+    stroke-width: 10;
+  }
+  .ring__value {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 10;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.4s var(--ease);
+  }
+  .ring__text {
+    transform: rotate(90deg);
+    transform-origin: 60px 60px;
+    font-size: 1.3rem;
+    font-weight: 700;
+    fill: var(--text);
+  }
+  .ring-phase { font-size: var(--step-1); font-weight: 700; }
+
+  .block + .block { margin-block-start: var(--space-m); }
+  .block h2 {
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+    font-size: var(--step-0);
+    margin-block-end: var(--space-xs);
+  }
+
+  .bars { display: grid; gap: var(--space-2xs); list-style: none; padding: 0; }
+  .bars li {
+    display: grid;
+    grid-template-columns: 1.5rem minmax(7rem, 11rem) 1fr auto;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: var(--space-2xs) var(--space-xs);
+    border-radius: var(--radius-s);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+  }
+  .bars__icon { display: grid; place-items: center; color: var(--phase); }
+  .bars__label { font-weight: 600; font-size: var(--step--1); }
+  .bars__track {
+    height: 8px;
+    background: var(--bg-sunken);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+  }
+  .bars__bar {
+    display: block;
+    height: 100%;
+    background: var(--phase);
+    border-radius: var(--radius-full);
+    transition: width 0.3s var(--ease);
+  }
+  .bars__count { font-variant-numeric: tabular-nums; }
+
+  .recent { display: grid; gap: var(--space-3xs); list-style: none; padding: 0; }
+  .recent__item {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: var(--space-2xs) var(--space-xs);
+    border-radius: var(--radius-s);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+  }
+  .recent__title { font-weight: 600; font-size: var(--step--1); }
+  .recent__title a { text-decoration: none; }
+  .recent__title a:hover { text-decoration: underline; }
+
+  @media (max-width: 39.99rem) {
+    .bars li {
+      grid-template-columns: 1.5rem 1fr auto;
+      grid-template-rows: auto auto;
+    }
+    .bars__track {
+      grid-column: 1 / -1;
+    }
+  }
+</style>

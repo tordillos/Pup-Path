@@ -1,0 +1,433 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Icon from '../components/Icon.astro';
+---
+
+<BaseLayout title="Iniciar sesión · Pup Path">
+  <div class="container-narrow page">
+    <header class="page-head">
+      <h1 id="auth-title">Tu Cuenta</h1>
+      <p class="muted" id="auth-desc">Guarda tu progreso en la nube y sincronízalo entre tus dispositivos.</p>
+    </header>
+
+    <div class="card auth-card">
+      <div class="tabs" role="tablist">
+        <button class="tab-btn active" role="tab" id="tab-login" data-tab="login">Iniciar sesión</button>
+        <button class="tab-btn" role="tab" id="tab-signup" data-tab="signup">Crear cuenta</button>
+      </div>
+
+      <div id="unconfigured-warning" class="banner-warn" hidden>
+        <Icon name="shield" size={18} />
+        <div>
+          <strong>Supabase no está configurado aún</strong>
+          <p class="small">Define <code>PUBLIC_SUPABASE_URL</code> y <code>PUBLIC_SUPABASE_PUBLISHABLE_KEY</code> en tu fichero <code>.env</code> para habilitar la autenticación.</p>
+        </div>
+      </div>
+
+      <form id="auth-form" class="auth-form">
+        <div class="field" id="field-name" hidden>
+          <label for="name-input">Tu nombre / usuario <span class="required-asterisk">*</span></label>
+          <input id="name-input" type="text" placeholder="Ej. Alex" autocomplete="name" />
+        </div>
+
+        <div class="field" id="field-dog-name" hidden>
+          <label for="dog-name-input">Nombre de tu perro / mascota <span class="required-asterisk">*</span></label>
+          <input id="dog-name-input" type="text" placeholder="Ej. Maya" autocomplete="off" />
+        </div>
+
+        <div class="field">
+          <label for="email-input">Correo electrónico <span class="required-asterisk">*</span></label>
+          <input id="email-input" type="email" required placeholder="tu@email.com" autocomplete="email" />
+        </div>
+
+        <div class="field">
+          <div class="field-header">
+            <label for="password-input">Contraseña <span class="required-asterisk">*</span></label>
+            <button type="button" class="link-btn" id="btn-open-forgot">¿Olvidaste tu contraseña?</button>
+          </div>
+          <input id="password-input" type="password" required minlength="6" placeholder="Mínimo 6 caracteres" autocomplete="current-password" />
+        </div>
+
+        <button type="submit" class="btn btn--primary submit-btn" id="submit-btn">
+          <Icon name="check" size={18} />
+          <span id="submit-text">Entrar</span>
+        </button>
+      </form>
+
+      <div class="divider">
+        <span>o</span>
+      </div>
+
+      <button type="button" class="btn btn-google" id="google-btn">
+        <svg width="18" height="18" viewBox="0 0 24 24">
+          <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
+          <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.36 24 12 24z"/>
+          <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 10.03 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+          <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.36 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+        </svg>
+        <span>Continuar con Google</span>
+      </button>
+
+      <p id="auth-message" class="auth-msg" role="status" hidden></p>
+    </div>
+  </div>
+
+  <!-- MODAL: Recuperar contraseña -->
+  <dialog id="modal-forgot-password" class="modal-dialog">
+    <div class="card modal-content">
+      <h3>Recuperar contraseña</h3>
+      <p class="small muted">
+        Introduce el correo asociado a tu cuenta y te enviaremos un enlace para restablecer tu contraseña.
+      </p>
+      <form id="form-forgot-password">
+        <div class="field">
+          <label for="input-forgot-email">Correo electrónico <span class="required-asterisk">*</span></label>
+          <input id="input-forgot-email" class="modal-input" type="email" required placeholder="tu@email.com" autocomplete="email" />
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn" id="btn-cancel-forgot">Cancelar</button>
+          <button type="submit" class="btn btn--primary" id="btn-submit-forgot">
+            <Icon name="check" size={16} />
+            <span>Enviar enlace</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+</BaseLayout>
+
+<script>
+  import { isSupabaseConfigured } from '../lib/supabase';
+  import { signInWithEmail, signUpWithEmail, signInWithGoogle, resetPasswordForEmail, getCurrentUser } from '../scripts/auth';
+  import { ensureProgressLoaded } from '../scripts/progress';
+  import { toastError, toastSuccess, toastInfo } from '../scripts/toast';
+
+  function initLoginPage() {
+    const tabLogin = document.getElementById('tab-login');
+    const tabSignup = document.getElementById('tab-signup');
+    const fieldName = document.getElementById('field-name');
+    const fieldDogName = document.getElementById('field-dog-name');
+    const submitText = document.getElementById('submit-text');
+    const authTitle = document.getElementById('auth-title');
+    const authDesc = document.getElementById('auth-desc');
+    const form = document.getElementById('auth-form') as HTMLFormElement;
+    const emailInput = document.getElementById('email-input') as HTMLInputElement;
+    const passwordInput = document.getElementById('password-input') as HTMLInputElement;
+    const nameInput = document.getElementById('name-input') as HTMLInputElement;
+    const dogNameInput = document.getElementById('dog-name-input') as HTMLInputElement;
+    const googleBtn = document.getElementById('google-btn');
+    const btnOpenForgot = document.getElementById('btn-open-forgot');
+    const unconfiguredWarn = document.getElementById('unconfigured-warning');
+
+    // Modal recuperar contraseña
+    const modalForgot = document.getElementById('modal-forgot-password') as HTMLDialogElement;
+    const btnCancelForgot = document.getElementById('btn-cancel-forgot');
+    const formForgot = document.getElementById('form-forgot-password') as HTMLFormElement;
+    const inputForgotEmail = document.getElementById('input-forgot-email') as HTMLInputElement;
+
+    if (!form) return;
+
+    let mode: 'login' | 'signup' = 'login';
+
+    if (unconfiguredWarn) {
+      unconfiguredWarn.hidden = isSupabaseConfigured;
+    }
+
+    // Si ya está logueado, redirigir a inicio
+    getCurrentUser().then(user => {
+      if (user) {
+        window.location.href = '/';
+      }
+    });
+
+    function setMode(newMode: 'login' | 'signup') {
+      mode = newMode;
+      if (mode === 'login') {
+        tabLogin?.classList.add('active');
+        tabSignup?.classList.remove('active');
+        if (fieldName) fieldName.hidden = true;
+        if (fieldDogName) fieldDogName.hidden = true;
+        if (nameInput) nameInput.required = false;
+        if (dogNameInput) dogNameInput.required = false;
+        if (btnOpenForgot) btnOpenForgot.hidden = false;
+        if (submitText) submitText.textContent = 'Iniciar sesión';
+        if (authTitle) authTitle.textContent = 'Iniciar sesión';
+        if (authDesc) authDesc.textContent = 'Accede a tu cuenta para recuperar tu progreso.';
+        if (passwordInput) passwordInput.autocomplete = 'current-password';
+      } else {
+        tabSignup?.classList.add('active');
+        tabLogin?.classList.remove('active');
+        if (fieldName) fieldName.hidden = false;
+        if (fieldDogName) fieldDogName.hidden = false;
+        if (nameInput) nameInput.required = true;
+        if (dogNameInput) dogNameInput.required = true;
+        if (btnOpenForgot) btnOpenForgot.hidden = true;
+        if (submitText) submitText.textContent = 'Registrarse';
+        if (authTitle) authTitle.textContent = 'Crear cuenta';
+        if (authDesc) authDesc.textContent = 'Crea tu cuenta para guardar y sincronizar el entrenamiento de tu perro.';
+        if (passwordInput) passwordInput.autocomplete = 'new-password';
+      }
+    }
+
+    tabLogin?.addEventListener('click', () => setMode('login'));
+    tabSignup?.addEventListener('click', () => setMode('signup'));
+
+    // Abrir y cerrar modal olvidar contraseña
+    btnOpenForgot?.addEventListener('click', () => {
+      if (emailInput && emailInput.value.trim() && inputForgotEmail) {
+        inputForgotEmail.value = emailInput.value.trim();
+      }
+      modalForgot?.showModal();
+    });
+
+    btnCancelForgot?.addEventListener('click', () => {
+      modalForgot?.close();
+    });
+
+    modalForgot?.addEventListener('click', (e) => {
+      if (e.target === modalForgot) modalForgot.close();
+    });
+
+    formForgot?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = inputForgotEmail?.value.trim();
+      if (!email) {
+        toastError('Por favor, introduce tu correo electrónico.');
+        return;
+      }
+      try {
+        toastInfo('Enviando enlace de recuperación...');
+        await resetPasswordForEmail(email);
+        modalForgot?.close();
+        toastSuccess('¡Enlace enviado! Revisa tu bandeja de entrada o spam.', 6000);
+        formForgot.reset();
+      } catch (err: any) {
+        toastError(err.message || 'Error al enviar el enlace de recuperación');
+      }
+    });
+
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = emailInput?.value.trim();
+      const password = passwordInput?.value;
+      const name = nameInput?.value.trim();
+      const dogName = dogNameInput?.value.trim();
+
+      if (!email || !password) {
+        toastError('Por favor, completa tu correo y contraseña.');
+        return;
+      }
+
+      if (mode === 'signup') {
+        if (!name) {
+          toastError('Por favor, indica tu nombre de usuario.');
+          nameInput?.focus();
+          return;
+        }
+        if (!dogName) {
+          toastError('Por favor, introduce el nombre de tu perro.');
+          dogNameInput?.focus();
+          return;
+        }
+      }
+
+      try {
+        if (mode === 'login') {
+          toastInfo('Iniciando sesión...');
+          await signInWithEmail(email, password);
+          toastSuccess('¡Bienvenido!');
+          await ensureProgressLoaded(true);
+          window.location.href = '/';
+        } else {
+          toastInfo('Creando tu cuenta...');
+          const res = await signUpWithEmail(email, password, name, dogName);
+          if (res.session) {
+            toastSuccess('¡Cuenta creada con éxito!');
+            await ensureProgressLoaded(true);
+            window.location.href = '/';
+          } else {
+            toastInfo('Cuenta creada. Por favor, confirma el correo de verificación en tu email.', 6000);
+          }
+        }
+      } catch (err: any) {
+        toastError(err.message || 'Error en la autenticación');
+      }
+    });
+
+    googleBtn?.addEventListener('click', async () => {
+      try {
+        toastInfo('Redirigiendo a Google...');
+        await signInWithGoogle();
+      } catch (err: any) {
+        toastError(err.message || 'Error al iniciar con Google');
+      }
+    });
+  }
+
+  document.addEventListener('astro:page-load', initLoginPage);
+</script>
+
+<style>
+  .page { padding-block: var(--space-l); }
+  .page-head { margin-block-end: var(--space-m); }
+
+  .auth-card {
+    display: grid;
+    gap: var(--space-s);
+    padding: var(--space-m);
+  }
+
+  .tabs {
+    display: flex;
+    background: var(--bg-sunken);
+    padding: 4px;
+    border-radius: var(--radius-m);
+    gap: 4px;
+  }
+  .tab-btn {
+    flex: 1;
+    border: 0;
+    background: transparent;
+    padding: var(--space-2xs) var(--space-xs);
+    border-radius: var(--radius-s);
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active {
+    background: var(--bg-elevated);
+    color: var(--text);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+
+  .banner-warn {
+    display: flex;
+    gap: var(--space-xs);
+    align-items: flex-start;
+    padding: var(--space-xs) var(--space-s);
+    background: color-mix(in srgb, var(--warn) 15%, transparent);
+    border: 1px solid var(--warn);
+    border-radius: var(--radius-s);
+    color: var(--text);
+  }
+
+  .auth-form {
+    display: grid;
+    gap: var(--space-s);
+  }
+
+  .field {
+    display: grid;
+    gap: var(--space-3xs);
+  }
+  .field-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .field label {
+    font-size: var(--step--1);
+    font-weight: 600;
+  }
+  .required-asterisk {
+    color: var(--warn);
+    font-weight: 700;
+  }
+  .link-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--accent);
+    font-size: var(--step--1);
+    cursor: pointer;
+    text-decoration: underline;
+  }
+  .link-btn:hover {
+    color: color-mix(in srgb, var(--accent) 80%, black);
+  }
+
+  .field input {
+    min-height: 44px;
+    padding: 0 var(--space-xs);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s);
+    background: var(--bg);
+    color: var(--text);
+    font-size: var(--step-0);
+  }
+  .field input:focus {
+    outline: 2px solid var(--accent);
+    border-color: transparent;
+  }
+
+  .submit-btn {
+    width: 100%;
+    justify-content: center;
+    margin-top: var(--space-2xs);
+  }
+
+  .divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: var(--step--1);
+  }
+  .divider::before, .divider::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid var(--border);
+  }
+  .divider span { padding: 0 var(--space-xs); }
+
+  .btn-google {
+    width: 100%;
+    justify-content: center;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+  }
+  .btn-google:hover {
+    background: var(--bg-sunken);
+  }
+
+  /* MODAL */
+  .modal-dialog {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    max-width: min(90vw, 460px);
+    margin: auto;
+  }
+  .modal-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+  }
+  .modal-content {
+    display: grid;
+    gap: var(--space-s);
+    padding: var(--space-m);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+  }
+  .modal-input {
+    width: 100%;
+    min-height: 44px;
+    padding: 0 var(--space-xs);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s);
+    background: var(--bg);
+    color: var(--text);
+    margin-block: var(--space-3xs) var(--space-xs);
+  }
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-xs);
+    margin-top: var(--space-2xs);
+  }
+</style>

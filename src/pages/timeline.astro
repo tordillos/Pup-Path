@@ -1,0 +1,316 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Icon from '../components/Icon.astro';
+import TaskCard from '../components/TaskCard.astro';
+import { phases } from '../data/phases';
+import { tasks, tasksByPhase } from '../data/tasks';
+---
+
+<BaseLayout title="Timeline">
+  <div class="container page">
+    <header class="page-head">
+      <h1>Timeline de entrenamiento</h1>
+      <p class="lead muted" id="timeline-lead">
+        {tasks.length} tareas en {phases.length} fases, de lo más fácil a lo más difícil. Cada tarea
+        se desbloquea cuando dominas sus prerrequisitos.
+      </p>
+    </header>
+
+    <!-- Spinner de carga -->
+    <div id="timeline-spinner" class="page-loader">
+      <div class="spinner"></div>
+      <p class="small muted">Cargando timeline...</p>
+    </div>
+
+    <!-- Estado cuando NO hay mascota activa -->
+    <div id="timeline-no-pet-card" class="card empty" style="text-align: center; padding: var(--space-m);" hidden>
+      <p class="lead" style="margin-bottom: var(--space-2xs);">🐾 No tienes ninguna mascota activa</p>
+      <p class="small muted" style="margin-bottom: var(--space-s);">Para registrar sesiones y hacer seguimiento del timeline, añade una mascota en Ajustes o únete a una compartida.</p>
+      <a href="/ajustes" class="btn btn--primary">Gestionar mascotas en Ajustes</a>
+    </div>
+
+    <!-- Layout del Timeline -->
+    <div class="layout" id="timeline-layout" hidden>
+      <nav class="phase-nav" aria-label="Fases">
+        {phases.map((phase) => (
+          <a href={`#${phase.slug}`} class="phase-nav__item" style={`--phase:${phase.color}`} data-nav-phase={phase.id}>
+            <span class="phase-nav__num">{phase.id}</span>
+            <span class="phase-nav__text">
+              <span class="phase-nav__title">{phase.title}</span>
+              <span class="small muted" data-nav-count>0/{tasksByPhase(phase.id).length}</span>
+            </span>
+          </a>
+        ))}
+      </nav>
+
+      <div class="rail">
+        {phases.map((phase) => {
+          const phaseTasks = tasksByPhase(phase.id);
+          return (
+            <section class="phase" id={phase.slug} style={`--phase:${phase.color}`} data-phase={phase.id}>
+              <header class="phase-head">
+                <span class="phase-node" data-phase-node>
+                  <Icon name={phase.icon} size={20} />
+                  <span class="phase-node__num">{phase.id}</span>
+                </span>
+                <div class="phase-title-block">
+                  <h2>{phase.title}</h2>
+                  <p class="cluster small">
+                    <span class="badge">{phase.age}</span>
+                    <span class="badge">{phaseTasks.length} tareas</span>
+                  </p>
+                  <p class="muted small">{phase.subtitle}</p>
+                  <p class="phase-progress">
+                    <span class="phase-progress__track">
+                      <span class="phase-progress__bar" data-phase-bar style="width:0%"></span>
+                    </span>
+                    <span class="small muted"><span data-phase-done>0</span> de {phaseTasks.length} dominadas</span>
+                  </p>
+                </div>
+              </header>
+
+              <div class="grid-auto phase-tasks">
+                {phaseTasks.map((task) => <TaskCard task={task} />)}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    </div>
+  </div>
+</BaseLayout>
+
+<script>
+  import { load, ensureProgressLoaded } from '../scripts/progress';
+  import { stateOf } from '../scripts/engine';
+  import { tasksByPhase } from '../data/tasks';
+  import { phases } from '../data/phases';
+  import { autoHydrate, onProgressChange } from '../scripts/ui';
+  import { getCurrentUser } from '../scripts/auth';
+  import { toastInfo, toastWarning } from '../scripts/toast';
+
+  function paintPhases() {
+    const progress = load();
+    let currentMarked = false;
+
+    for (const phase of phases) {
+      const phaseTasks = tasksByPhase(phase.id);
+      const done = phaseTasks.filter((t) => stateOf(t, progress) === 'dominado').length;
+      const pct = phaseTasks.length === 0 ? 0 : Math.round((done / phaseTasks.length) * 100);
+
+      const section = document.querySelector<HTMLElement>(`[data-phase="${phase.id}"]`);
+      if (section) {
+        const bar = section.querySelector<HTMLElement>('[data-phase-bar]');
+        if (bar) bar.style.width = `${pct}%`;
+        const count = section.querySelector('[data-phase-done]');
+        if (count) count.textContent = String(done);
+
+        const node = section.querySelector<HTMLElement>('[data-phase-node]');
+        if (node) {
+          const isCurrent = !currentMarked && done < phaseTasks.length;
+          node.classList.toggle('current', isCurrent);
+          if (isCurrent) currentMarked = true;
+        }
+      }
+
+      const nav = document.querySelector<HTMLElement>(`[data-nav-phase="${phase.id}"] [data-nav-count]`);
+      if (nav) nav.textContent = `${done}/${phaseTasks.length}`;
+    }
+  }
+
+  // Resalta en el índice la fase visible
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const id = (entry.target as HTMLElement).dataset.phase;
+        document.querySelectorAll('[data-nav-phase]').forEach((el) => {
+          el.classList.toggle('active', (el as HTMLElement).dataset.navPhase === id);
+        });
+      }
+    },
+    { rootMargin: '-20% 0px -70% 0px' },
+  );
+  document.querySelectorAll('[data-phase]').forEach((el) => observer.observe(el));
+
+  document.querySelectorAll('.task-card a').forEach((link) => {
+    link.addEventListener('click', async (e) => {
+      const user = await getCurrentUser();
+      if (!user) {
+        e.preventDefault();
+        toastInfo('Inicia sesión para registrar o modificar esta tarea');
+        const href = (link as HTMLAnchorElement).getAttribute('href') || '/timeline';
+        window.location.href = `/login?redirect=${encodeURIComponent(href)}`;
+        return;
+      }
+      const progress = load();
+      if (!progress.dogName) {
+        e.preventDefault();
+        toastWarning('Debes añadir una mascota en Ajustes antes de acceder a las tareas');
+        window.location.href = '/ajustes';
+      }
+    });
+  });
+
+  async function initTimeline() {
+    const spinner = document.getElementById('timeline-spinner');
+    const noPetCard = document.getElementById('timeline-no-pet-card');
+    const timelineLayout = document.getElementById('timeline-layout');
+
+    const user = await getCurrentUser();
+    if (!user) {
+      window.location.href = '/login?redirect=/timeline';
+      return;
+    }
+
+    if (spinner) spinner.hidden = false;
+    const progress = await ensureProgressLoaded();
+    if (spinner) spinner.hidden = true;
+
+    if (!progress.dogName) {
+      if (noPetCard) noPetCard.hidden = false;
+      if (timelineLayout) timelineLayout.hidden = true;
+      return;
+    }
+
+    if (noPetCard) noPetCard.hidden = true;
+    if (timelineLayout) timelineLayout.hidden = false;
+
+    paintPhases();
+    autoHydrate();
+  }
+
+  document.addEventListener('astro:page-load', initTimeline);
+  onProgressChange(paintPhases);
+</script>
+
+<style>
+  .page { padding-block: var(--space-l); }
+  .page-head { max-width: 46rem; margin-block-end: var(--space-m); }
+  .lead { font-size: var(--step-1); margin-block-start: var(--space-2xs); }
+
+  .layout { display: grid; gap: var(--space-m); }
+
+  /* Índice: fila deslizable en móvil, columna sticky en escritorio */
+  .phase-nav {
+    position: sticky;
+    top: 56px;
+    z-index: 5;
+    display: flex;
+    gap: var(--space-2xs);
+    overflow-x: auto;
+    padding-block: var(--space-2xs);
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    scrollbar-width: none;
+  }
+  .phase-nav::-webkit-scrollbar { display: none; }
+
+  .phase-nav__item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2xs);
+    padding: var(--space-3xs) var(--space-xs);
+    border-radius: var(--radius-full);
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: var(--step--1);
+    white-space: nowrap;
+    text-decoration: none;
+    transition: all 0.15s ease;
+  }
+  .phase-nav__item.active {
+    background: var(--phase);
+    color: #fff;
+    border-color: transparent;
+  }
+  .phase-nav__item.active .small { color: rgba(255,255,255,0.85); }
+  .phase-nav__num {
+    display: grid;
+    place-items: center;
+    width: 1.3rem; height: 1.3rem;
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, currentColor 18%, transparent);
+    font-size: 0.75rem;
+  }
+  .phase-nav__text { display: inline-flex; gap: var(--space-2xs); align-items: baseline; }
+
+  /* Timeline rail vertical */
+  .rail { display: grid; gap: var(--space-xl); position: relative; }
+
+  .phase {
+    position: relative;
+    padding-inline-start: var(--space-m);
+    border-inline-start: 3px solid var(--phase);
+  }
+  .phase-head {
+    display: grid;
+    gap: var(--space-2xs);
+    margin-block-end: var(--space-m);
+    position: relative;
+  }
+  .phase-node {
+    position: absolute;
+    left: calc(-1 * var(--space-m) - 1.5px);
+    top: 0;
+    transform: translateX(-50%);
+    display: grid;
+    place-items: center;
+    width: 32px; height: 32px;
+    border-radius: var(--radius-full);
+    background: var(--bg-elevated);
+    border: 2px solid var(--phase);
+    color: var(--phase);
+  }
+  .phase-node__num { display: none; }
+  .phase-node.current {
+    background: var(--phase);
+    color: #fff;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--phase) 30%, transparent);
+  }
+
+  .phase-title-block { display: grid; gap: var(--space-3xs); }
+  .phase-title-block h2 { font-size: var(--step-2); letter-spacing: -0.01em; }
+
+  .phase-progress { display: flex; align-items: center; gap: var(--space-xs); margin-block-start: var(--space-2xs); }
+  .phase-progress__track {
+    flex: 1;
+    max-width: 14rem;
+    height: 6px;
+    background: var(--bg-sunken);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+  }
+  .phase-progress__bar {
+    display: block;
+    height: 100%;
+    background: var(--phase);
+    border-radius: var(--radius-full);
+    transition: width 0.3s var(--ease);
+  }
+
+  .phase-tasks { margin-block-start: var(--space-s); }
+
+  @media (min-width: 64rem) {
+    .layout {
+      grid-template-columns: 16rem minmax(0, 1fr);
+      align-items: start;
+      gap: var(--space-xl);
+    }
+    .phase-nav {
+      flex-direction: column;
+      border-bottom: 0;
+      border-inline-end: 1px solid var(--border);
+      padding: 0 var(--space-s) 0 0;
+      max-height: calc(100vh - 5rem);
+      overflow-y: auto;
+    }
+    .phase-nav__item {
+      width: 100%;
+      border-radius: var(--radius-s);
+      padding: var(--space-2xs) var(--space-xs);
+    }
+  }
+</style>

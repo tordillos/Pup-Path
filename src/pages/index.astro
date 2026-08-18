@@ -1,0 +1,536 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Icon from '../components/Icon.astro';
+import { tasks } from '../data/tasks';
+import { phases } from '../data/phases';
+
+const totalTasks = tasks.length;
+const howTo = [
+  {
+    icon: 'lightbulb' as const,
+    title: 'Mira qué toca hoy',
+    text: 'La app te propone 3 o 4 tareas: primero cierra lo que tienes a medias y luego abre lo siguiente más fácil.',
+  },
+  {
+    icon: 'timer' as const,
+    title: 'Entrena en sesiones cortas',
+    text: 'Un Border Collie aprende más en cuatro sesiones de 4 minutos que en una de media hora. Registra cada sesión con un toque.',
+  },
+  {
+    icon: 'check' as const,
+    title: 'Marca lo dominado',
+    text: 'Cada tarea tiene un criterio objetivo. Al darla por dominada se desbloquean las que dependían de ella.',
+  },
+];
+---
+
+<BaseLayout title="Hoy">
+  <!-- Banner de aviso / bloqueo para usuarios no autenticados -->
+  <div class="guest-banner-wrapper" id="guest-lock-banner" hidden>
+    <div class="container">
+      <div class="guest-lock-card">
+        <div class="guest-lock-icon">
+          <Icon name="shield" size={24} />
+        </div>
+        <div class="guest-lock-info">
+          <strong>Inicia sesión para entrenar a tu perro</strong>
+          <p class="small muted">
+            Accede con tu cuenta para desbloquear tu plan de entrenamiento personalizado, registrar sesiones y sincronizar tus datos en la nube.
+          </p>
+        </div>
+        <a href="/login" class="btn btn--primary guest-lock-btn">
+          <Icon name="check" size={16} /> Iniciar sesión o Registrarse
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <section class="hero">
+    <div class="container hero-inner">
+      <p class="badge badge--accent"><Icon name="paw" size={14} /> Plan para Border Collie</p>
+      
+      <!-- Título para usuario autenticado -->
+      <h1 class="auth-only">
+        Hoy entrenamos con <span class="dog-name" data-dog-name><span class="skeleton skeleton-text" style="width: 110px; display: inline-block;"></span></span>
+      </h1>
+
+      <!-- Título para invitado / no autenticado -->
+      <h1 class="guest-only" hidden>
+        Plan de entrenamiento progresivo
+      </h1>
+
+      <p class="lead muted">
+        {totalTasks} tareas ordenadas de más fácil a más difícil: trucos, hábitos de casa y órdenes.
+        Tú registras las sesiones y la app decide qué toca después.
+      </p>
+
+      <!-- Estadísticas (Solo visibles cuando hay mascota activa) -->
+      <div class="hero-stats auth-only" data-summary hidden>
+        <div class="hero-stat">
+          <strong data-stat-percent><span class="skeleton skeleton-text" style="width: 3.2rem; height: 1.6rem; display: inline-block;"></span></strong>
+          <span class="small muted">completado</span>
+        </div>
+        <div class="hero-stat">
+          <strong data-stat-dominados><span class="skeleton skeleton-text" style="width: 2rem; height: 1.6rem; display: inline-block;"></span></strong>
+          <span class="small muted">dominadas</span>
+        </div>
+        <div class="hero-stat">
+          <strong data-stat-sesiones><span class="skeleton skeleton-text" style="width: 2.5rem; height: 1.6rem; display: inline-block;"></span></strong>
+          <span class="small muted">sesiones</span>
+        </div>
+        <div class="hero-stat">
+          <strong data-stat-fase><span class="skeleton skeleton-text" style="width: 1.5rem; height: 1.6rem; display: inline-block;"></span></strong>
+          <span class="small muted">fase actual</span>
+        </div>
+      </div>
+
+      <div class="cluster hero-cta">
+        <a class="btn btn--primary auth-only" href="/timeline">
+          <Icon name="flag" size={16} /> Ver el timeline completo
+        </a>
+        <a class="btn auth-only" href="/progreso">
+          <Icon name="chart" size={16} /> Mi progreso
+        </a>
+
+        <a class="btn btn--primary guest-only" href="/login" hidden>
+          <Icon name="check" size={16} /> Iniciar sesión para empezar
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section container">
+    <div class="section-head">
+      <h2><Icon name="lightbulb" size={22} /> Qué entrenar ahora</h2>
+      <p class="muted small" id="suggestions-desc">Sugerencias calculadas con tu progreso guardado.</p>
+    </div>
+
+    <div class="grid-auto" data-suggestions>
+      <article class="card suggestion skeleton-suggestion-card">
+        <div class="suggestion__link">
+          <span class="skeleton" style="width: 2.75rem; height: 2.75rem; border-radius: var(--radius-m); flex: none;"></span>
+          <div style="flex: 1; display: grid; gap: 6px;">
+            <span class="skeleton skeleton-text" style="width: 4.5rem; height: 1.2rem; border-radius: var(--radius-full);"></span>
+            <span class="skeleton skeleton-text" style="width: 80%; height: 1.1rem;"></span>
+            <span class="skeleton skeleton-text" style="width: 45%; height: 0.8rem;"></span>
+          </div>
+        </div>
+        <p class="small" style="display: grid; gap: 4px; margin-top: 4px;">
+          <span class="skeleton skeleton-text" style="width: 95%;"></span>
+          <span class="skeleton skeleton-text" style="width: 65%;"></span>
+        </p>
+        <div class="small" style="display: flex; gap: var(--space-xs); align-items: center; margin-top: 6px;">
+          <span class="skeleton skeleton-text" style="width: 40%;"></span>
+          <span class="skeleton" style="flex: 1; height: 6px; border-radius: var(--radius-full);"></span>
+          <span class="skeleton skeleton-text" style="width: 2rem;"></span>
+        </div>
+      </article>
+      <article class="card suggestion skeleton-suggestion-card">
+        <div class="suggestion__link">
+          <span class="skeleton" style="width: 2.75rem; height: 2.75rem; border-radius: var(--radius-m); flex: none;"></span>
+          <div style="flex: 1; display: grid; gap: 6px;">
+            <span class="skeleton skeleton-text" style="width: 4.5rem; height: 1.2rem; border-radius: var(--radius-full);"></span>
+            <span class="skeleton skeleton-text" style="width: 80%; height: 1.1rem;"></span>
+            <span class="skeleton skeleton-text" style="width: 45%; height: 0.8rem;"></span>
+          </div>
+        </div>
+        <p class="small" style="display: grid; gap: 4px; margin-top: 4px;">
+          <span class="skeleton skeleton-text" style="width: 95%;"></span>
+          <span class="skeleton skeleton-text" style="width: 65%;"></span>
+        </p>
+        <div class="small" style="display: flex; gap: var(--space-xs); align-items: center; margin-top: 6px;">
+          <span class="skeleton skeleton-text" style="width: 40%;"></span>
+          <span class="skeleton" style="flex: 1; height: 6px; border-radius: var(--radius-full);"></span>
+          <span class="skeleton skeleton-text" style="width: 2rem;"></span>
+        </div>
+      </article>
+      <article class="card suggestion skeleton-suggestion-card">
+        <div class="suggestion__link">
+          <span class="skeleton" style="width: 2.75rem; height: 2.75rem; border-radius: var(--radius-m); flex: none;"></span>
+          <div style="flex: 1; display: grid; gap: 6px;">
+            <span class="skeleton skeleton-text" style="width: 4.5rem; height: 1.2rem; border-radius: var(--radius-full);"></span>
+            <span class="skeleton skeleton-text" style="width: 80%; height: 1.1rem;"></span>
+            <span class="skeleton skeleton-text" style="width: 45%; height: 0.8rem;"></span>
+          </div>
+        </div>
+        <p class="small" style="display: grid; gap: 4px; margin-top: 4px;">
+          <span class="skeleton skeleton-text" style="width: 95%;"></span>
+          <span class="skeleton skeleton-text" style="width: 65%;"></span>
+        </p>
+        <div class="small" style="display: flex; gap: var(--space-xs); align-items: center; margin-top: 6px;">
+          <span class="skeleton skeleton-text" style="width: 40%;"></span>
+          <span class="skeleton" style="flex: 1; height: 6px; border-radius: var(--radius-full);"></span>
+          <span class="skeleton skeleton-text" style="width: 2rem;"></span>
+        </div>
+      </article>
+      <article class="card suggestion skeleton-suggestion-card">
+        <div class="suggestion__link">
+          <span class="skeleton" style="width: 2.75rem; height: 2.75rem; border-radius: var(--radius-m); flex: none;"></span>
+          <div style="flex: 1; display: grid; gap: 6px;">
+            <span class="skeleton skeleton-text" style="width: 4.5rem; height: 1.2rem; border-radius: var(--radius-full);"></span>
+            <span class="skeleton skeleton-text" style="width: 80%; height: 1.1rem;"></span>
+            <span class="skeleton skeleton-text" style="width: 45%; height: 0.8rem;"></span>
+          </div>
+        </div>
+        <p class="small" style="display: grid; gap: 4px; margin-top: 4px;">
+          <span class="skeleton skeleton-text" style="width: 95%;"></span>
+          <span class="skeleton skeleton-text" style="width: 65%;"></span>
+        </p>
+        <div class="small" style="display: flex; gap: var(--space-xs); align-items: center; margin-top: 6px;">
+          <span class="skeleton skeleton-text" style="width: 40%;"></span>
+          <span class="skeleton" style="flex: 1; height: 6px; border-radius: var(--radius-full);"></span>
+          <span class="skeleton skeleton-text" style="width: 2rem;"></span>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="section container">
+    <div class="section-head">
+      <h2><Icon name="target" size={22} /> Cómo funciona</h2>
+    </div>
+    <div class="grid-auto">
+      {howTo.map((s) => (
+        <article class="card how-card">
+          <span class="icon-tile"><Icon name={s.icon} size={22} /></span>
+          <h3>{s.title}</h3>
+          <p class="small muted">{s.text}</p>
+        </article>
+      ))}
+    </div>
+  </section>
+
+  <section class="section container">
+    <div class="section-head">
+      <h2><Icon name="flag" size={22} /> Las 6 fases del plan</h2>
+      <p class="muted small">De cachorro recién llegado a perro con secuencias encadenadas.</p>
+    </div>
+    <ol class="phase-rail">
+      {phases.map((phase) => (
+        <li class="phase-chip card" style={`--phase:${phase.color}`}>
+          <span class="phase-num">{phase.id}</span>
+          <span class="phase-icon"><Icon name={phase.icon} size={18} /></span>
+          <span>
+            <a href={`/timeline#${phase.slug}`} class="phase-title protected-link">{phase.title}</a>
+            <span class="small muted block">{phase.age}</span>
+          </span>
+        </li>
+      ))}
+    </ol>
+  </section>
+</BaseLayout>
+
+<script>
+  import { load } from '../scripts/progress';
+  import { stats, suggest } from '../scripts/engine';
+  import { autoHydrate, icon, onProgressChange } from '../scripts/ui';
+  import { phaseById } from '../data/phases';
+  import { subscribeToAuth } from '../scripts/auth';
+  import { tasks } from '../data/tasks';
+  import { toastInfo } from '../scripts/toast';
+
+  const KIND_LABEL = { continuar: 'Continúa', empezar: 'Empieza', repasar: 'Repasa' } as const;
+
+  let currentUser: any = null;
+
+  function renderGuestView() {
+    // Mostrar elementos para invitados
+    const banner = document.getElementById('guest-lock-banner');
+    if (banner) banner.hidden = false;
+
+    document.querySelectorAll('.auth-only').forEach((el) => ((el as HTMLElement).hidden = true));
+    document.querySelectorAll('.guest-only').forEach((el) => ((el as HTMLElement).hidden = false));
+
+    const suggestionsDesc = document.getElementById('suggestions-desc');
+    if (suggestionsDesc) suggestionsDesc.textContent = 'Vista previa bloqueada · Inicia sesión para desbloquear tus tareas.';
+
+    const list = document.querySelector<HTMLElement>('[data-suggestions]');
+    if (!list) return;
+
+    // Mostrar las primeras tareas bloqueadas como preview
+    const previewTasks = tasks.slice(0, 3);
+    list.innerHTML = previewTasks
+      .map((task) => {
+        const phase = phaseById(task.phase);
+        return `
+        <article class="card suggestion suggestion--locked">
+          <a class="suggestion__link" href="/login?redirect=/tarea/${task.id}">
+            <span class="icon-tile icon-tile--locked">${icon('shield', 22)}</span>
+            <span>
+              <span class="badge badge--warn">🔒 Bloqueado</span>
+              <span class="suggestion__title">${task.title}</span>
+              <span class="small muted block">Fase ${phase.id} · ${phase.title}</span>
+            </span>
+          </a>
+          <p class="small muted">${task.description}</p>
+          <div class="locked-overlay-footer">
+            <span class="small muted">Pulsa para iniciar sesión</span>
+          </div>
+        </article>`;
+      })
+      .join('');
+
+    // Interceptar enlaces protegidos para usuarios no logueados
+    document.querySelectorAll('.protected-link').forEach((link) => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        toastInfo('Inicia sesión para acceder a tu plan de entrenamiento');
+        window.location.href = '/login';
+      });
+    });
+  }
+
+  let isCloudSynced = false;
+
+  function renderUserView() {
+    const banner = document.getElementById('guest-lock-banner');
+    if (banner) banner.hidden = true;
+
+    document.querySelectorAll('.auth-only').forEach((el) => ((el as HTMLElement).hidden = false));
+    document.querySelectorAll('.guest-only').forEach((el) => ((el as HTMLElement).hidden = true));
+
+    // Si aún está conectando y descargando datos de la nube, mantener los skeletons
+    if (!isCloudSynced) return;
+
+    const suggestionsDesc = document.getElementById('suggestions-desc');
+    if (suggestionsDesc) suggestionsDesc.textContent = 'Sugerencias calculadas con tu progreso guardado.';
+
+    const progress = load();
+    const s = stats(progress);
+
+    const name = progress.dogName?.trim();
+    const nameEl = document.querySelector<HTMLElement>('[data-dog-name]');
+    const list = document.querySelector<HTMLElement>('[data-suggestions]');
+    const summary = document.querySelector<HTMLElement>('[data-summary]');
+
+    if (!name) {
+      if (nameEl) nameEl.textContent = 'tu mascota';
+      if (suggestionsDesc) suggestionsDesc.textContent = 'Añade una mascota en Ajustes para empezar su plan.';
+      if (summary) summary.hidden = true;
+      if (list) {
+        list.innerHTML = `
+        <div class="card empty" style="grid-column: 1 / -1; text-align: center; padding: var(--space-m);">
+          <p class="lead" style="margin-bottom: var(--space-2xs);">🐾 No tienes ninguna mascota activa</p>
+          <p class="small muted" style="margin-bottom: var(--space-s);">Para registrar sesiones y hacer seguimiento, añade una mascota en Ajustes o únete a una compartida.</p>
+          <a href="/ajustes" class="btn btn--primary">Gestionar mascotas en Ajustes</a>
+        </div>`;
+      }
+      return;
+    }
+
+    if (nameEl) nameEl.textContent = name;
+    if (summary) summary.hidden = false;
+
+    const set = (sel: string, value: string) => {
+      const el = document.querySelector(sel);
+      if (el) el.textContent = value;
+    };
+    set('[data-stat-percent]', `${s.percent}%`);
+    set('[data-stat-dominados]', `${s.dominados}`);
+    set('[data-stat-sesiones]', `${s.sesiones}`);
+    set('[data-stat-fase]', `${s.fase}`);
+
+    if (!list) return;
+
+    const items = suggest(progress);
+    list.innerHTML = items
+      .map(({ task, reason, kind }) => {
+        const done = progress.tasks[task.id]?.sessions ?? 0;
+        const pct = Math.min(100, Math.round((done / task.goalSessions) * 100));
+        const phase = phaseById(task.phase);
+        return `
+        <article class="card suggestion" data-kind="${kind}">
+          <a class="suggestion__link" href="/tarea/${task.id}">
+            <span class="icon-tile">${icon(task.icon, 22)}</span>
+            <span>
+              <span class="badge badge--accent">${KIND_LABEL[kind]}</span>
+              <span class="suggestion__title">${task.title}</span>
+              <span class="small muted block">Fase ${phase.id} · ${phase.title}</span>
+            </span>
+          </a>
+          <p class="small muted">${reason}</p>
+          <p class="small suggestion__meta">
+            ${icon('timer', 14)} ${task.session.minutes} min × ${task.session.perDay}/día
+            <span class="progress-mini"><span class="progress-mini__bar" style="width:${pct}%"></span></span>
+            <span>${done}/${task.goalSessions}</span>
+          </p>
+        </article>`;
+      })
+      .join('');
+
+    if (items.length === 0) {
+      list.innerHTML = `<p class="muted small">Has dominado todo el plan. Toca inventar trucos nuevos.</p>`;
+    }
+  }
+
+  import { ensureProgressLoaded } from '../scripts/progress';
+  import { getCurrentUser } from '../scripts/auth';
+
+  async function initHome() {
+    currentUser = await getCurrentUser();
+    if (currentUser) {
+      await ensureProgressLoaded();
+      isCloudSynced = true;
+      renderUserView();
+    } else {
+      renderGuestView();
+    }
+  }
+
+  document.addEventListener('astro:page-load', initHome);
+
+  subscribeToAuth(async (user) => {
+    currentUser = user;
+    if (user) {
+      await ensureProgressLoaded();
+      isCloudSynced = true;
+      renderUserView();
+    } else {
+      renderGuestView();
+    }
+  });
+
+  onProgressChange(() => {
+    if (currentUser) renderUserView();
+  });
+</script>
+
+<style>
+  .guest-banner-wrapper {
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    padding-block: var(--space-xs);
+  }
+  .guest-lock-card {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-s);
+    padding: var(--space-xs) var(--space-s);
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    border-radius: var(--radius-m);
+  }
+  .guest-lock-icon {
+    display: grid;
+    place-items: center;
+    color: var(--accent);
+  }
+  .guest-lock-info {
+    flex: 1;
+    min-width: min(100%, 20rem);
+  }
+  .guest-lock-btn {
+    white-space: nowrap;
+  }
+
+  .hero {
+    padding-block: var(--space-xl) var(--space-l);
+    background:
+      radial-gradient(120% 80% at 15% 0%, var(--accent-soft), transparent 60%),
+      var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .hero-inner { display: grid; gap: var(--space-s); max-width: 46rem; }
+  .hero .badge { justify-self: start; }
+  .lead { font-size: var(--step-1); max-width: 40ch; }
+  .dog-name { color: var(--accent); }
+
+  .hero-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+    gap: var(--space-2xs);
+    padding: var(--space-xs);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+    background: var(--bg-elevated);
+  }
+  .hero-stat { display: grid; text-align: center; }
+  .hero-stat strong { font-size: var(--step-2); font-variant-numeric: tabular-nums; }
+
+  .hero-cta { gap: var(--space-2xs); }
+
+  .section-head { margin-block-end: var(--space-s); }
+  .section-head h2 { display: flex; align-items: center; gap: 0.4em; }
+
+  .how-card { display: grid; gap: var(--space-2xs); align-content: start; }
+
+  .phase-rail {
+    display: grid;
+    gap: var(--space-2xs);
+    padding: 0;
+    margin: 0;
+    list-style: none;
+    counter-reset: phase;
+  }
+  @media (min-width: 48rem) {
+    .phase-rail { grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+  }
+  .phase-chip {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2xs);
+    border-left: 3px solid var(--phase);
+  }
+  .phase-num {
+    display: grid;
+    place-items: center;
+    width: 1.6rem; height: 1.6rem;
+    flex: none;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--phase) 20%, transparent);
+    color: var(--phase);
+    font-size: var(--step--1);
+    font-weight: 700;
+  }
+  .phase-icon { color: var(--phase); display: grid; place-items: center; }
+  .phase-title { font-weight: 650; text-decoration: none; }
+  .block { display: block; }
+
+  /* Locked suggestion preview */
+  .suggestion--locked {
+    opacity: 0.85;
+    border-style: dashed;
+  }
+  .icon-tile--locked {
+    background: var(--warn-soft);
+    color: var(--warn);
+  }
+  .locked-overlay-footer {
+    margin-top: var(--space-2xs);
+    padding-top: var(--space-2xs);
+    border-top: 1px dashed var(--border);
+    font-weight: 600;
+    color: var(--accent);
+  }
+</style>
+
+<style is:global>
+  /* Tarjetas de sugerencia generadas en cliente */
+  .suggestion { position: relative; display: grid; gap: var(--space-2xs); align-content: start; }
+  .suggestion__link { display: flex; gap: var(--space-xs); align-items: flex-start; text-decoration: none; }
+  .suggestion__link::after { content: ''; position: absolute; inset: 0; }
+  .suggestion__title { display: block; font-weight: 650; line-height: 1.25; margin-block-start: 0.15em; }
+  .suggestion__meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2xs);
+    padding-block-start: var(--space-2xs);
+    border-top: 1px dashed var(--border);
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+  .suggestion__meta svg { display: inline-block; vertical-align: -2px; }
+  .suggestion[data-kind='continuar'] .icon-tile { background: var(--warn-soft); color: var(--warn); }
+  .suggestion[data-kind='repasar'] .icon-tile { background: var(--bg-sunken); color: var(--text-muted); }
+  .progress-mini {
+    flex: 1;
+    min-width: 2rem;
+    height: 5px;
+    border-radius: var(--radius-full);
+    background: var(--bg-sunken);
+    overflow: hidden;
+  }
+  .progress-mini__bar { display: block; height: 100%; background: var(--accent); }
+</style>

@@ -1,0 +1,251 @@
+---
+import Icon from './Icon.astro';
+
+const path = Astro.url.pathname;
+const isActive = (href: string) => (href === '/' ? path === '/' : path.startsWith(href));
+---
+
+<header class="site-header" transition:persist="site-header">
+  <div class="container bar">
+    <div class="brand-group">
+      <a class="brand" href="/">
+        <span class="brand-mark"><Icon name="paw" size={20} /></span>
+        <span class="brand-text">Pup&nbsp;Path</span>
+      </a>
+
+      <!-- Pastilla de mascota activa visible para usuarios autenticados -->
+      <a href="/ajustes" class="header-pet-pill is-loading" id="header-pet-pill" title="Mascota activa · Pulsa para gestionar en Ajustes" hidden>
+        <span class="pet-pill-emoji">🐶</span>
+        <span class="pet-pill-name" id="header-dog-name">
+          <span class="skeleton skeleton-text" style="width: 65px; display: inline-block; vertical-align: middle;"></span>
+        </span>
+      </a>
+    </div>
+
+    <nav class="nav" aria-label="Principal">
+      <!-- Enlace común siempre visible -->
+      <a href="/" class:list={['nav-link', { active: isActive('/') }]} aria-current={isActive('/') ? 'page' : undefined}>
+        <Icon name="lightbulb" size={18} />
+        <span>Hoy</span>
+      </a>
+
+      <!-- Enlaces visibles SOLO para usuarios autenticados -->
+      <a href="/timeline" class:list={['nav-link', { active: isActive('/timeline') }]} aria-current={isActive('/timeline') ? 'page' : undefined} data-auth-only hidden>
+        <Icon name="flag" size={18} />
+        <span>Timeline</span>
+      </a>
+      <a href="/progreso" class:list={['nav-link', { active: isActive('/progreso') }]} aria-current={isActive('/progreso') ? 'page' : undefined} data-auth-only hidden>
+        <Icon name="chart" size={18} />
+        <span>Progreso</span>
+      </a>
+      <a href="/ajustes" class:list={['nav-link', { active: isActive('/ajustes') }]} aria-current={isActive('/ajustes') ? 'page' : undefined} data-auth-only hidden>
+        <Icon name="shield" size={18} />
+        <span>Ajustes</span>
+      </a>
+
+      <!-- Botón de entrar visible SOLO para invitados -->
+      <a href="/login" class:list={['nav-link', 'nav-link--login', { active: isActive('/login') }]} aria-current={isActive('/login') ? 'page' : undefined} data-guest-only>
+        <Icon name="check" size={18} />
+        <span>Entrar</span>
+      </a>
+    </nav>
+  </div>
+</header>
+
+<script>
+  import { subscribeToAuth } from '../scripts/auth';
+  import { load, CHANGE_EVENT, getActiveDogId } from '../scripts/progress';
+  import { getUserDogs, DOGS_CHANGE_EVENT } from '../scripts/sync';
+
+  const authLinks = document.querySelectorAll<HTMLElement>('[data-auth-only]');
+  const guestLinks = document.querySelectorAll<HTMLElement>('[data-guest-only]');
+  const petPill = document.getElementById('header-pet-pill');
+  const petNameEl = document.getElementById('header-dog-name');
+
+  async function updateHeaderPet() {
+    if (!petPill || !petNameEl) return;
+    const dogs = await getUserDogs();
+    if (dogs.length === 0) {
+      petNameEl.textContent = '+ Añadir mascota';
+      petPill.classList.add('header-pet-pill--empty');
+      petPill.classList.remove('is-loading');
+      return;
+    }
+    const currentId = getActiveDogId() || dogs[0]?.id;
+    const active = dogs.find((d) => d.id === currentId) || dogs[0];
+    petNameEl.textContent = active.name;
+    petPill.classList.remove('header-pet-pill--empty');
+    petPill.classList.remove('is-loading');
+  }
+
+  subscribeToAuth((user) => {
+    if (user) {
+      authLinks.forEach((el) => (el.hidden = false));
+      guestLinks.forEach((el) => (el.hidden = true));
+      if (petPill) petPill.hidden = false;
+      updateHeaderPet();
+    } else {
+      authLinks.forEach((el) => (el.hidden = true));
+      guestLinks.forEach((el) => (el.hidden = false));
+      if (petPill) petPill.hidden = true;
+    }
+  });
+
+  document.addEventListener(DOGS_CHANGE_EVENT, updateHeaderPet);
+  document.addEventListener(CHANGE_EVENT, () => {
+    const dogName = load().dogName;
+    if (dogName && petNameEl && !petPill?.classList.contains('header-pet-pill--empty')) {
+      petNameEl.textContent = dogName;
+    }
+  });
+
+  document.addEventListener('astro:page-load', () => {
+    const currentPath = window.location.pathname;
+    document.querySelectorAll('.nav-link').forEach((link) => {
+      const href = link.getAttribute('href');
+      const isAct = href === '/' ? currentPath === '/' : currentPath.startsWith(href || '');
+      link.classList.toggle('active', isAct);
+      if (isAct) link.setAttribute('aria-current', 'page');
+      else link.removeAttribute('aria-current');
+    });
+    updateHeaderPet();
+  });
+</script>
+
+<style>
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-s);
+    min-height: 56px;
+  }
+
+  .brand-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2xs);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    text-decoration: none;
+  }
+  .brand-mark {
+    display: grid;
+    place-items: center;
+    width: 32px; height: 32px;
+    border-radius: 10px;
+    background: var(--accent);
+    color: #fff;
+  }
+
+  /* Pastilla de mascota activa en el Header */
+  .header-pet-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.65rem;
+    border-radius: var(--radius-full);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    font-size: var(--step--1);
+    font-weight: 600;
+    color: var(--text);
+    text-decoration: none;
+    transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+  }
+  .header-pet-pill:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+    transform: translateY(-1px);
+  }
+  .header-pet-pill--empty {
+    border-style: dashed;
+    color: var(--text-muted);
+  }
+  .pet-pill-emoji {
+    font-size: 1rem;
+    line-height: 1;
+  }
+  .pet-pill-name {
+    max-width: 14ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Móvil: barra de pestañas fija abajo */
+  .nav {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 10;
+    display: flex;
+    justify-content: space-around;
+    gap: var(--space-3xs);
+    padding: var(--space-3xs) var(--space-2xs);
+    padding-bottom: calc(var(--space-3xs) + env(safe-area-inset-bottom, 0px));
+    background: var(--bg-elevated);
+    border-top: 1px solid var(--border);
+  }
+
+  .nav-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    flex: 1;
+    min-height: 48px;
+    padding: var(--space-3xs);
+    border-radius: var(--radius-s);
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .nav-link.active { color: var(--accent); background: var(--accent-soft); }
+  .nav-link--login { color: var(--accent); font-weight: 700; }
+
+  @media (min-width: 48rem) {
+    .site-header {
+      background: color-mix(in srgb, var(--bg) 88%, transparent);
+      backdrop-filter: blur(10px);
+    }
+    .nav {
+      position: static;
+      padding: 0;
+      background: none;
+      border: 0;
+      gap: var(--space-3xs);
+    }
+    .nav-link {
+      flex-direction: row;
+      gap: var(--space-3xs);
+      min-height: 40px;
+      padding-inline: var(--space-xs);
+      border-radius: var(--radius-full);
+      font-size: var(--step--1);
+    }
+  }
+</style>
+
+<style is:global>
+  /* Deja hueco para la tab bar inferior en móvil */
+  @media (max-width: 47.99rem) {
+    body { padding-bottom: 4.5rem; }
+  }
+</style>

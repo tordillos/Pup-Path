@@ -1,0 +1,66 @@
+---
+import '../styles/global.css';
+import Header from '../components/Header.astro';
+import Toast from '../components/Toast.astro';
+import Icon from '../components/Icon.astro';
+import { ClientRouter } from 'astro:transitions';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description = 'Plan de entrenamiento progresivo para Border Collie: trucos, hábitos y órdenes ordenados de más fácil a más difícil.' } = Astro.props;
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>{title} · Pup Path</title>
+    <ClientRouter />
+  </head>
+  <body>
+    <a href="#main" class="skip">Saltar al contenido</a>
+    <Header />
+    <Toast />
+    <main id="main">
+      <slot />
+    </main>
+    <footer class="site-footer">
+      <div class="container cluster" style="justify-content: center;">
+        <p class="small muted">
+          <Icon name="paw" size={16} /> Pup Path · tu progreso se sincroniza en la nube.
+        </p>
+      </div>
+    </footer>
+
+    <style>
+      .skip {
+        position: absolute;
+        left: var(--space-s);
+        top: -4rem;
+        z-index: 20;
+        padding: var(--space-2xs) var(--space-s);
+        background: var(--accent);
+        color: #fff;
+        border-radius: var(--radius-full);
+        transition: top 0.2s var(--ease);
+      }
+      .skip:focus { top: var(--space-s); }
+
+      main { padding-block-end: var(--space-2xl); }
+
+      .site-footer {
+        border-top: 1px solid var(--border);
+        padding-block: var(--space-m);
+        background: var(--bg-sunken);
+      }
+      .site-footer p { display: inline-flex; align-items: center; gap: 0.4em; }
+    </style>
+  </body>
+</html>

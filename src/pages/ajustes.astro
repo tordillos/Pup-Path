@@ -1,0 +1,574 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Icon from '../components/Icon.astro';
+---
+
+<BaseLayout title="Ajustes">
+  <div class="container-narrow page">
+    <header class="page-head">
+      <h1>Ajustes</h1>
+      <p class="muted">Gestión de tu mascota, compartir entrenamiento y cuenta.</p>
+    </header>
+
+    <!-- Cuenta -->
+    <section class="card block auth-section">
+      <h2><Icon name="users" size={20} /> Cuenta</h2>
+      <p class="small">
+        Sesión iniciada como <strong id="user-email-display">cargando...</strong>
+      </p>
+      <div class="cluster" style="margin-top: var(--space-2xs);">
+        <button class="btn" id="logout-btn">
+          <Icon name="shield" size={16} /> Cerrar sesión
+        </button>
+      </div>
+    </section>
+
+    <!-- Mis Mascotas / Selector de perro activo -->
+    <section class="card block" id="dogs-selector-section">
+      <div class="section-head-between">
+        <h2><Icon name="dog" size={20} /> Mis Mascotas</h2>
+        <button class="btn btn--sm btn--primary" id="open-add-dog-modal-btn">
+          <Icon name="check" size={14} /> + Añadir mascota
+        </button>
+      </div>
+      <div id="dogs-list" class="dogs-list">
+        <p class="small muted">Cargando tus mascotas...</p>
+      </div>
+    </section>
+
+    <!-- Datos de la Mascota Activa con botón para abrir modal de editar nombre -->
+    <section class="card block" id="active-dog-card">
+      <div class="section-head-between">
+        <h2><Icon name="dog" size={20} /> Mascota Activa</h2>
+        <button class="btn btn--sm" id="open-edit-name-modal-btn">
+          <Icon name="sparkles" size={14} /> Cambiar nombre
+        </button>
+      </div>
+      <div class="active-dog-preview">
+        <p class="lead" style="margin: 0;">
+          🐶 <strong id="current-dog-name-display">Mi Perro</strong>
+        </p>
+        <p class="small muted">
+          El nombre se sincroniza automáticamente con todos los entrenadores que compartan esta mascota.
+        </p>
+      </div>
+    </section>
+
+    <!-- Compartir perro actual con otros usuarios -->
+    <section class="card block" id="share-dog-card">
+      <h2><Icon name="users" size={20} /> Compartir Mascota</h2>
+      <p class="small muted">
+        Comparte el entrenamiento de <strong id="share-dog-name">tu mascota</strong> con tu pareja, familia o co-entrenador para que ambos podáis registrar sesiones y ver el progreso en tiempo real.
+      </p>
+      
+      <div class="share-box">
+        <span class="small muted">Código de invitación:</span>
+        <div class="cluster">
+          <code class="share-code" id="share-code-display">------</code>
+          <button class="btn btn--sm" id="copy-code-btn"><Icon name="check" size={14} /> Copiar código</button>
+        </div>
+      </div>
+
+      <div class="collaborators-box" id="collaborators-box">
+        <span class="small muted">Entrenadores con acceso:</span>
+        <ul id="collaborators-list" class="collaborators-list">
+          <li class="small muted">Tú (Propietario)</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Unirse a una mascota existente con código -->
+    <section class="card block">
+      <h2><Icon name="target" size={20} /> Unirse a una Mascota Compartida</h2>
+      <p class="small muted">
+        ¿Alguien te ha dado un código de invitación? Introdúcelo aquí para unirte a su entrenamiento.
+      </p>
+      <form id="join-form" class="cluster">
+        <input type="text" id="join-code-input" placeholder="Ej. A8F3K2" maxlength="10" style="text-transform: uppercase; font-family: monospace; font-weight: bold; width: 140px;" required />
+        <button type="submit" class="btn btn--primary"><Icon name="check" size={16} /> Unirse</button>
+      </form>
+      <p class="small" role="status" id="join-status" hidden></p>
+    </section>
+
+    <!-- Resetear el progreso -->
+    <section class="card block warn-box" id="reset-card">
+      <h2><Icon name="timer" size={20} /> Resetear progreso</h2>
+      <p class="small muted">
+        Reinicia a cero las sesiones y estados de las 45 tareas de <strong id="reset-dog-name">esta mascota</strong>. Mantiene a la mascota registrada y la conexión con sus entrenadores.
+      </p>
+      <div>
+        <button class="btn" id="open-reset-modal-btn">Resetear progreso</button>
+      </div>
+      <p class="small" role="status" id="reset-status" hidden></p>
+    </section>
+
+    <!-- Eliminar Mascota -->
+    <section class="card block danger" id="delete-card">
+      <h2><Icon name="shield" size={20} /> Eliminar Mascota</h2>
+      <p class="small muted">
+        Elimina por completo a <strong id="delete-dog-name">esta mascota</strong>, su código de invitación y todo su historial de entrenamiento en la nube.
+      </p>
+      <div>
+        <button class="btn btn--danger" id="open-delete-modal-btn">Eliminar esta mascota</button>
+      </div>
+      <p class="small" role="status" id="delete-status" hidden></p>
+    </section>
+  </div>
+
+  <!-- MODAL: Cambiar Nombre -->
+  <dialog id="modal-edit-name" class="modal-dialog">
+    <div class="modal-content card">
+      <h3>Cambiar nombre de la mascota</h3>
+      <p class="small muted">Introduce el nuevo nombre para tu mascota:</p>
+      <form id="form-edit-name">
+        <input type="text" id="input-edit-name" placeholder="Nombre de la mascota" required class="modal-input" />
+        <div class="modal-actions">
+          <button type="button" class="btn" id="btn-cancel-edit-name">Cancelar</button>
+          <button type="submit" class="btn btn--primary" id="btn-save-edit-name">Guardar nombre</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- MODAL: Añadir Mascota -->
+  <dialog id="modal-add-dog" class="modal-dialog">
+    <div class="modal-content card">
+      <h3>Añadir nueva mascota</h3>
+      <p class="small muted">Introduce el nombre de la nueva mascota para empezar su plan de entrenamiento:</p>
+      <form id="form-add-dog">
+        <input type="text" id="input-add-dog-name" placeholder="Ej. Maya, Rocky, Bruno..." required class="modal-input" />
+        <div class="modal-actions">
+          <button type="button" class="btn" id="btn-cancel-add-dog">Cancelar</button>
+          <button type="submit" class="btn btn--primary" id="btn-save-add-dog">Añadir mascota</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- MODAL: Resetear Progreso -->
+  <dialog id="modal-reset-progress" class="modal-dialog">
+    <div class="modal-content card">
+      <h3>¿Resetear progreso a cero?</h3>
+      <p class="small">
+        ¿Estás seguro de que deseas reiniciar a cero las 45 tareas de <strong id="modal-reset-dog-name">esta mascota</strong>?
+      </p>
+      <p class="small muted">
+        Se mantendrá la mascota creada y todos sus entrenadores conectados. Solo se borrarán las sesiones y marcas de completado.
+      </p>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="btn-cancel-reset">Cancelar</button>
+        <button type="button" class="btn btn--primary" id="btn-confirm-reset">Sí, resetear progreso</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- MODAL: Eliminar Mascota -->
+  <dialog id="modal-delete-dog" class="modal-dialog">
+    <div class="modal-content card">
+      <h3>¿Eliminar mascota definitivamente?</h3>
+      <p class="small">
+        ¿Estás seguro de que quieres eliminar a <strong id="modal-delete-dog-name">esta mascota</strong>?
+      </p>
+      <p class="small muted" style="color: var(--warn);">
+        ⚠️ Esta acción eliminará permanentemente la mascota, su código de invitación y todo su historial de la base de datos en la nube. No se puede deshacer.
+      </p>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="btn-cancel-delete">Cancelar</button>
+        <button type="button" class="btn btn--danger" id="btn-confirm-delete">Eliminar definitivamente</button>
+      </div>
+    </div>
+  </dialog>
+</BaseLayout>
+
+<script>
+  import { getActiveDogId, ensureProgressLoaded } from '../scripts/progress';
+  import { getCurrentUser, signOutUser } from '../scripts/auth';
+  import { toastSuccess, toastError, toastInfo } from '../scripts/toast';
+  import {
+    getUserDogs,
+    switchActiveDog,
+    joinSharedDog,
+    getDogCollaborators,
+    deleteDog,
+    resetDogProgress,
+    createNewDog,
+    updateDogName,
+    DOGS_CHANGE_EVENT,
+  } from '../scripts/sync';
+
+  async function initAjustes() {
+    const userEmailDisplay = document.getElementById('user-email-display');
+    const logoutBtn = document.getElementById('logout-btn');
+
+    const dogsList = document.getElementById('dogs-list');
+    const currentDogNameDisplay = document.getElementById('current-dog-name-display');
+    const shareDogName = document.getElementById('share-dog-name');
+    const resetDogName = document.getElementById('reset-dog-name');
+    const deleteDogName = document.getElementById('delete-dog-name');
+    const shareCodeDisplay = document.getElementById('share-code-display');
+    const copyCodeBtn = document.getElementById('copy-code-btn');
+    const collaboratorsList = document.getElementById('collaborators-list');
+    const joinForm = document.getElementById('join-form') as HTMLFormElement;
+    const joinCodeInput = document.getElementById('join-code-input') as HTMLInputElement;
+
+    // Modales
+    const modalEditName = document.getElementById('modal-edit-name') as HTMLDialogElement;
+    const formEditName = document.getElementById('form-edit-name') as HTMLFormElement;
+    const inputEditName = document.getElementById('input-edit-name') as HTMLInputElement;
+    const btnCancelEditName = document.getElementById('btn-cancel-edit-name');
+    const openEditNameBtn = document.getElementById('open-edit-name-modal-btn');
+
+    const modalAddDog = document.getElementById('modal-add-dog') as HTMLDialogElement;
+    const formAddDog = document.getElementById('form-add-dog') as HTMLFormElement;
+    const inputAddDogName = document.getElementById('input-add-dog-name') as HTMLInputElement;
+    const btnCancelAddDog = document.getElementById('btn-cancel-add-dog');
+    const openAddDogBtn = document.getElementById('open-add-dog-modal-btn');
+
+    const modalReset = document.getElementById('modal-reset-progress') as HTMLDialogElement;
+    const modalResetDogName = document.getElementById('modal-reset-dog-name');
+    const openResetModalBtn = document.getElementById('open-reset-modal-btn');
+    const btnCancelReset = document.getElementById('btn-cancel-reset');
+    const btnConfirmReset = document.getElementById('btn-confirm-reset');
+
+    const modalDelete = document.getElementById('modal-delete-dog') as HTMLDialogElement;
+    const modalDeleteDogName = document.getElementById('modal-delete-dog-name');
+    const openDeleteModalBtn = document.getElementById('open-delete-modal-btn');
+    const btnCancelDelete = document.getElementById('btn-cancel-delete');
+    const btnConfirmDelete = document.getElementById('btn-confirm-delete');
+
+    const user = await getCurrentUser();
+    if (!user) {
+      window.location.href = '/login?redirect=/ajustes';
+      return;
+    }
+
+    if (userEmailDisplay) userEmailDisplay.textContent = user.email || 'usuario';
+
+    let activeDogId: string | null = null;
+    let activeDogName = 'Mi Perro';
+
+    async function refreshDogsAndSharing() {
+      const dogs = await getUserDogs();
+      if (!dogsList) return;
+
+      if (dogs.length === 0) {
+        dogsList.innerHTML = `<div class="empty card"><p class="small muted">No tienes ninguna mascota todavía. Añade una para empezar.</p></div>`;
+        activeDogId = null;
+        if (currentDogNameDisplay) currentDogNameDisplay.textContent = 'Ninguna mascota';
+        if (shareDogName) shareDogName.textContent = 'tu mascota';
+        if (resetDogName) resetDogName.textContent = 'esta mascota';
+        if (deleteDogName) deleteDogName.textContent = 'esta mascota';
+        if (shareCodeDisplay) shareCodeDisplay.textContent = '------';
+        if (collaboratorsList) collaboratorsList.innerHTML = `<li class="small muted">Sin mascota activa</li>`;
+        return;
+      }
+
+      activeDogId = getActiveDogId() || dogs.find((d) => d.isCurrent)?.id || dogs[0]?.id;
+      const activeDog = dogs.find((d) => d.id === activeDogId) || dogs[0];
+      activeDogId = activeDog.id;
+      activeDogName = activeDog.name;
+
+      if (currentDogNameDisplay) currentDogNameDisplay.textContent = activeDog.name;
+      if (shareDogName) shareDogName.textContent = activeDog.name;
+      if (resetDogName) resetDogName.textContent = activeDog.name;
+      if (deleteDogName) deleteDogName.textContent = activeDog.name;
+      if (modalResetDogName) modalResetDogName.textContent = activeDog.name;
+      if (modalDeleteDogName) modalDeleteDogName.textContent = activeDog.name;
+      if (shareCodeDisplay) shareCodeDisplay.textContent = activeDog.shareCode || 'Generando...';
+
+      // Cargar colaboradores
+      getDogCollaborators(activeDog.id).then((collabs) => {
+        if (!collaboratorsList) return;
+        if (collabs.length === 0) {
+          collaboratorsList.innerHTML = `<li class="small muted">Solo tú tienes acceso actualmente.</li>`;
+        } else {
+          collaboratorsList.innerHTML = collabs
+            .map((c) => `<li class="small">👤 ${c.name || c.email} <span class="badge badge--accent">${c.role === 'owner' ? 'Dueño' : 'Entrenador'}</span></li>`)
+            .join('');
+        }
+      });
+
+      dogsList.innerHTML = dogs
+        .map((d) => {
+          const isActive = d.id === activeDog.id;
+          return `
+          <div class="dog-item card ${isActive ? 'dog-item--active' : ''}">
+            <div class="dog-info">
+              <strong>${d.name}</strong>
+              <span class="small muted">${d.role === 'owner' ? '👑 Propietario' : '🤝 Compartido contigo'}</span>
+            </div>
+            ${
+              isActive
+                ? `<span class="badge badge--accent">Activa</span>`
+                : `<button class="btn btn--sm" data-switch-dog="${d.id}">Seleccionar</button>`
+            }
+          </div>`;
+        })
+        .join('');
+
+      // Listener para cambiar perro
+      dogsList.querySelectorAll<HTMLButtonElement>('[data-switch-dog]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const targetId = btn.dataset.switchDog;
+          if (targetId) {
+            await switchActiveDog(targetId);
+            toastInfo('Cambiando de mascota activa...');
+            await refreshDogsAndSharing();
+          }
+        });
+      });
+    }
+
+    await ensureProgressLoaded();
+    await refreshDogsAndSharing();
+    document.addEventListener(DOGS_CHANGE_EVENT, refreshDogsAndSharing);
+
+    // Copiar código de invitación
+    copyCodeBtn?.addEventListener('click', () => {
+      const code = shareCodeDisplay?.textContent?.trim();
+      if (code && code !== '------') {
+        navigator.clipboard.writeText(code);
+        toastSuccess('¡Código de invitación copiado al portapapeles!');
+        copyCodeBtn.textContent = '✓ ¡Copiado!';
+        window.setTimeout(() => {
+          copyCodeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polyline points="20 6 9 17 4 12"></polyline></svg> Copiar código';
+        }, 2000);
+      }
+    });
+
+    // MODAL: Cambiar Nombre
+    openEditNameBtn?.addEventListener('click', () => {
+      if (!activeDogId) return;
+      if (inputEditName) inputEditName.value = activeDogName;
+      modalEditName?.showModal();
+    });
+    btnCancelEditName?.addEventListener('click', () => modalEditName?.close());
+    formEditName?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!activeDogId) return;
+      const newName = inputEditName.value.trim();
+      if (!newName) return;
+      const res = await updateDogName(activeDogId, newName);
+      modalEditName?.close();
+      if (res.success) {
+        toastSuccess(res.message);
+        await refreshDogsAndSharing();
+      } else {
+        toastError(res.message);
+      }
+    });
+
+    const btnSaveAddDog = document.getElementById('btn-save-add-dog') as HTMLButtonElement;
+
+    // MODAL: Añadir Mascota
+    openAddDogBtn?.addEventListener('click', () => {
+      if (inputAddDogName) inputAddDogName.value = '';
+      modalAddDog?.showModal();
+    });
+    btnCancelAddDog?.addEventListener('click', () => modalAddDog?.close());
+    formAddDog?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = inputAddDogName.value.trim();
+      if (!name) return;
+      if (btnSaveAddDog) btnSaveAddDog.disabled = true;
+      try {
+        const res = await createNewDog(name);
+        modalAddDog?.close();
+        if (res.success) {
+          toastSuccess(res.message);
+          await refreshDogsAndSharing();
+        } else {
+          toastError(res.message);
+        }
+      } finally {
+        if (btnSaveAddDog) btnSaveAddDog.disabled = false;
+      }
+    });
+
+    // MODAL: Resetear Progreso
+    openResetModalBtn?.addEventListener('click', () => {
+      if (!activeDogId) return;
+      modalReset?.showModal();
+    });
+    btnCancelReset?.addEventListener('click', () => modalReset?.close());
+    btnConfirmReset?.addEventListener('click', async () => {
+      if (!activeDogId) return;
+      modalReset?.close();
+      await resetDogProgress(activeDogId);
+      toastSuccess('Progreso reseteado a cero correctamente.');
+    });
+
+    // MODAL: Eliminar Mascota
+    openDeleteModalBtn?.addEventListener('click', () => {
+      if (!activeDogId) return;
+      modalDelete?.showModal();
+    });
+    btnCancelDelete?.addEventListener('click', () => modalDelete?.close());
+    btnConfirmDelete?.addEventListener('click', async () => {
+      if (!activeDogId) return;
+      modalDelete?.close();
+      const res = await deleteDog(activeDogId);
+      if (res.success) {
+        toastSuccess(res.message);
+        await refreshDogsAndSharing();
+      } else {
+        toastError(res.message);
+      }
+    });
+
+    // Unirse a mascota compartida
+    joinForm?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const code = joinCodeInput.value.trim();
+      if (!code) return;
+
+      toastInfo('Verificando código de invitación...');
+      const res = await joinSharedDog(code);
+      if (res.success) {
+        toastSuccess(res.message);
+        joinCodeInput.value = '';
+        await refreshDogsAndSharing();
+      } else {
+        toastError(res.message);
+      }
+    });
+
+    logoutBtn?.addEventListener('click', async () => {
+      await signOutUser();
+      toastSuccess('Sesión cerrada.');
+      window.location.href = '/login';
+    });
+  }
+
+  document.addEventListener('astro:page-load', initAjustes);
+</script>
+
+<style>
+  .page { padding-block: var(--space-l); }
+  .page-head { margin-block-end: var(--space-m); }
+
+  .section-head-between {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-xs);
+  }
+
+  .block { display: grid; gap: var(--space-xs); }
+  .block + .block { margin-block-start: var(--space-s); }
+  .block h2 { display: flex; align-items: center; gap: 0.4em; font-size: var(--step-1); }
+
+  .auth-section {
+    border-left: 3px solid var(--accent);
+  }
+
+  .active-dog-preview {
+    display: grid;
+    gap: var(--space-3xs);
+    padding: var(--space-xs);
+    background: var(--bg-sunken);
+    border-radius: var(--radius-s);
+  }
+
+  .dogs-list {
+    display: grid;
+    gap: var(--space-2xs);
+  }
+  .dog-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-xs);
+    border: 1px solid var(--border);
+  }
+  .dog-item--active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .dog-info {
+    display: grid;
+    gap: 2px;
+  }
+
+  .share-box {
+    display: grid;
+    gap: var(--space-3xs);
+    padding: var(--space-xs);
+    border-radius: var(--radius-s);
+    background: var(--bg-sunken);
+  }
+  .share-code {
+    display: inline-block;
+    padding: 0.2em 0.6em;
+    font-size: var(--step-1);
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-s);
+    color: var(--accent);
+  }
+
+  .collaborators-box {
+    display: grid;
+    gap: var(--space-3xs);
+    margin-top: var(--space-2xs);
+  }
+  .collaborators-list {
+    display: grid;
+    gap: var(--space-3xs);
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .collaborators-list li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+  }
+
+  .warn-box {
+    border-color: color-mix(in srgb, var(--warn) 45%, var(--border));
+  }
+
+  .danger { border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); }
+  :global(.btn--danger) {
+    border-color: color-mix(in srgb, var(--warn) 60%, var(--border));
+    color: var(--warn);
+  }
+
+  /* MODALES */
+  .modal-dialog {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    max-width: min(90vw, 480px);
+    margin: auto;
+  }
+  .modal-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+  }
+  .modal-content {
+    display: grid;
+    gap: var(--space-s);
+    padding: var(--space-m);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+  }
+  .modal-input {
+    width: 100%;
+    min-height: 44px;
+    padding: 0 var(--space-xs);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s);
+    background: var(--bg);
+    color: var(--text);
+    margin-block: var(--space-2xs) var(--space-xs);
+  }
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-xs);
+    margin-top: var(--space-2xs);
+  }
+</style>

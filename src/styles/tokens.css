@@ -1,0 +1,72 @@
+/* Design tokens — una sola fuente de verdad para color, ritmo y tipografía. */
+:root {
+  color-scheme: light dark;
+
+  /* Escala tipográfica fluida: se adapta sin media queries */
+  --step--1: clamp(0.78rem, 0.75rem + 0.15vw, 0.86rem);
+  --step-0: clamp(0.94rem, 0.9rem + 0.2vw, 1rem);
+  --step-1: clamp(1.1rem, 1.02rem + 0.4vw, 1.3rem);
+  --step-2: clamp(1.35rem, 1.2rem + 0.7vw, 1.75rem);
+  --step-3: clamp(1.65rem, 1.4rem + 1.2vw, 2.4rem);
+  --step-4: clamp(2rem, 1.6rem + 2vw, 3.2rem);
+
+  /* Ritmo vertical */
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-s: 1rem;
+  --space-m: 1.5rem;
+  --space-l: 2rem;
+  --space-xl: 3rem;
+  --space-2xl: 4.5rem;
+
+  --radius-s: 8px;
+  --radius-m: 14px;
+  --radius-l: 22px;
+  --radius-full: 999px;
+
+  --container: 72rem;
+  --container-narrow: 46rem;
+
+  /* Paleta clara */
+  --bg: #f6f4ef;
+  --bg-elevated: #ffffff;
+  --bg-sunken: #eeebe3;
+  --border: #e0dbd0;
+  --border-strong: #cbc4b5;
+  --text: #221f1a;
+  --text-muted: #6c6558;
+  --accent: #2f7d6b;
+  --accent-soft: #dcefe9;
+  --accent-text: #1e5849;
+  --warn: #b5741f;
+  --warn-soft: #f8ecd8;
+  --done: #2f7d6b;
+  --lock: #8d8577;
+
+  --shadow-s: 0 1px 2px rgb(34 31 26 / 0.06), 0 2px 6px rgb(34 31 26 / 0.05);
+  --shadow-m: 0 4px 12px rgb(34 31 26 / 0.08), 0 12px 28px rgb(34 31 26 / 0.06);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16150f;
+    --bg-elevated: #201e17;
+    --bg-sunken: #100f0b;
+    --border: #322f25;
+    --border-strong: #4a4636;
+    --text: #f0ece1;
+    --text-muted: #a49d8c;
+    --accent: #6cc0a8;
+    --accent-soft: #1d332e;
+    --warn: #e0a45c;
+    --warn-soft: #33281a;
+    --done: #6cc0a8;
+    --lock: #6b6555;
+    --shadow-s: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-m: 0 6px 20px rgb(0 0 0 / 0.45);
+  }
+}

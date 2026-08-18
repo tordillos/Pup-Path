@@ -1,0 +1,371 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Icon from '../../components/Icon.astro';
+import TaskControls from '../../components/TaskControls.astro';
+import { orderedTasks, taskById, tasks } from '../../data/tasks';
+import { phaseById } from '../../data/phases';
+import type { Task } from '../../data/types';
+
+export function getStaticPaths() {
+  return tasks.map((task) => ({ params: { id: task.id }, props: { task } }));
+}
+
+interface Props {
+  task: Task;
+}
+
+const { task } = Astro.props;
+const phase = phaseById(task.phase);
+const index = orderedTasks.findIndex((t) => t.id === task.id);
+const prev = orderedTasks[index - 1];
+const next = orderedTasks[index + 1];
+const requires = task.requires.map((id) => taskById(id)).filter((t): t is Task => Boolean(t));
+
+const categoryLabel: Record<Task['category'], string> = {
+  fundamento: 'Fundamento',
+  obediencia: 'Orden',
+  habito: 'Hábito',
+  truco: 'Truco',
+  mental: 'Trabajo mental',
+  deporte: 'Deporte',
+};
+---
+
+<BaseLayout title={task.title} description={task.description}>
+  <div class="container page" style={`--phase:${phase.color}`}>
+    <nav class="crumbs small muted" aria-label="Miga de pan">
+      <a href="/timeline">Timeline</a>
+      <span aria-hidden="true">/</span>
+      <a href={`/timeline#${phase.slug}`}>Fase {phase.id} · {phase.title}</a>
+    </nav>
+
+    <div class="layout">
+      <article class="content">
+        <header class="task-head">
+          <span class="icon-tile icon-tile--lg"><Icon name={task.icon} size={30} /></span>
+          <div>
+            <p class="small muted">Tarea {String(task.order).padStart(2, '0')} de {orderedTasks.length}</p>
+            <h1>{task.title}</h1>
+            <p class="cluster small">
+              <span class="badge badge--accent">{categoryLabel[task.category]}</span>
+              <span class="badge">
+                <span class="dots" aria-label={`Dificultad ${task.difficulty} de 5`}>
+                  {Array.from({ length: 5 }).map((_, i) => <i class:list={{ on: i < task.difficulty }} />)}
+                </span>
+                Dificultad {task.difficulty}/5
+              </span>
+              <span class="badge"><Icon name="timer" size={14} /> {task.session.minutes} min · {task.session.perDay} veces al día</span>
+            </p>
+          </div>
+        </header>
+
+        <p class="lead">{task.description}</p>
+
+        {task.cue && (
+          <p class="cue">
+            <span class="small muted">Orden que usarás</span>
+            <strong>{task.cue}</strong>
+          </p>
+        )}
+
+        {requires.length > 0 && (
+          <section class="block">
+            <h2><Icon name="shield" size={20} /> Antes de empezar</h2>
+            <ul class="reqs">
+              {requires.map((r) => (
+                <li data-req-id={r.id}>
+                  <span class="reqs__dot" aria-hidden="true"></span>
+                  <a href={`/tarea/${r.id}`}>{r.title}</a>
+                  <span class="small muted reqs__state" data-req-state>sin dominar</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        <section class="block">
+          <h2><Icon name="flag" size={20} /> Cómo enseñarlo</h2>
+          <ol class="steps">
+            {task.steps.map((step) => <li>{step}</li>)}
+          </ol>
+        </section>
+
+        <section class="block">
+          <h2><Icon name="lightbulb" size={20} /> Consejos</h2>
+          <ul class="tips">
+            {task.tips.map((tip) => (
+              <li><Icon name="lightbulb" size={16} /> <span>{tip}</span></li>
+            ))}
+          </ul>
+        </section>
+
+        <section class="block">
+          <h2><Icon name="check" size={20} /> Cuándo darlo por dominado</h2>
+          <p class="success card">{task.success}</p>
+        </section>
+
+        <nav class="pager" aria-label="Navegación entre tareas">
+          {prev ? (
+            <a class="pager__link" href={`/tarea/${prev.id}`}>
+              <span class="small muted">Anterior</span>
+              <span>{prev.title}</span>
+            </a>
+          ) : <span />}
+          {next && (
+            <a class="pager__link pager__link--next" href={`/tarea/${next.id}`}>
+              <span class="small muted">Siguiente</span>
+              <span>{next.title}</span>
+            </a>
+          )}
+        </nav>
+      </article>
+
+      <TaskControls task={task} />
+    </div>
+  </div>
+</BaseLayout>
+
+<script>
+  import { addSession, getTask, load, removeSession, setNotes, setStatus, ensureProgressLoaded } from '../../scripts/progress';
+  import { missingRequirements, stateOf } from '../../scripts/engine';
+  import { taskById } from '../../data/tasks';
+  import { onProgressChange } from '../../scripts/ui';
+  import { getCurrentUser } from '../../scripts/auth';
+  import { toastSuccess, toastInfo } from '../../scripts/toast';
+  import type { Status } from '../../data/types';
+
+  async function initTaskPage() {
+    const panel = document.querySelector<HTMLElement>('[data-controls]');
+    const id = panel?.dataset.task ?? '';
+    const task = taskById(id);
+
+    if (!panel || !task) return;
+
+    const countEls = document.querySelectorAll('[data-count]');
+    const barEl = panel.querySelector<HTMLElement>('[data-bar]')!;
+    const blockedEl = panel.querySelector<HTMLElement>('[data-blocked]')!;
+    const notesEl = panel.querySelector<HTMLTextAreaElement>('[data-notes]')!;
+    const savedEl = panel.querySelector<HTMLElement>('[data-saved]')!;
+
+    function paint() {
+      const progress = load();
+      const entry = getTask(task!.id);
+
+      countEls.forEach((el) => (el.textContent = String(entry.sessions)));
+      if (barEl) barEl.style.width = `${Math.min(100, Math.round((entry.sessions / task!.goalSessions) * 100))}%`;
+
+      const state = stateOf(task!, progress);
+      panel!.dataset.state = state;
+
+      panel!.querySelectorAll<HTMLButtonElement>('[data-status]').forEach((btn) => {
+        btn.setAttribute('aria-pressed', String(btn.dataset.status === entry.status));
+      });
+
+      const missing = missingRequirements(task!, progress);
+      if (missing.length > 0) {
+        if (blockedEl) {
+          blockedEl.hidden = false;
+          blockedEl.innerHTML =
+            'Aún no domina ' +
+            missing.map((m) => `<a href="/tarea/${m.id}">${m.title}</a>`).join(' ni ') +
+            '. Puedes entrenarlo igualmente, pero irá más lento.';
+        }
+      } else {
+        if (blockedEl) blockedEl.hidden = true;
+      }
+
+      document.querySelectorAll<HTMLElement>('[data-req-id]').forEach((el) => {
+        const done = progress.tasks[el.dataset.reqId ?? '']?.status === 'dominado';
+        el.classList.toggle('done', done);
+        const state = el.querySelector('[data-req-state]');
+        if (state) state.textContent = done ? 'dominado' : 'sin dominar';
+      });
+
+      if (notesEl && document.activeElement !== notesEl) notesEl.value = entry.notes ?? '';
+    }
+
+    document.querySelectorAll('[data-add]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const user = await getCurrentUser();
+        if (!user) {
+          toastInfo('Inicia sesión para registrar tu entrenamiento');
+          window.location.href = `/login?redirect=/tarea/${task.id}`;
+          return;
+        }
+        await addSession(task.id);
+        paint();
+        toastSuccess('+1 sesión registrada');
+      });
+    });
+
+    document.querySelectorAll('[data-remove]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const user = await getCurrentUser();
+        if (!user) {
+          toastInfo('Inicia sesión para registrar tu entrenamiento');
+          window.location.href = `/login?redirect=/tarea/${task.id}`;
+          return;
+        }
+        await removeSession(task.id);
+        paint();
+        toastInfo('Sesión eliminada');
+      });
+    });
+
+    panel.querySelectorAll<HTMLButtonElement>('[data-status]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const user = await getCurrentUser();
+        if (!user) {
+          toastInfo('Inicia sesión para modificar el estado');
+          window.location.href = `/login?redirect=/tarea/${task.id}`;
+          return;
+        }
+        const status = btn.dataset.status as Status;
+        await setStatus(task.id, status);
+        paint();
+        if (status === 'dominado') {
+          toastSuccess('🎉 ¡Tarea marcada como dominada!');
+        } else if (status === 'progreso') {
+          toastInfo('Tarea marcada en progreso');
+        } else {
+          toastInfo('Tarea marcada como pendiente');
+        }
+      });
+    });
+
+    let timer: number | undefined;
+    notesEl?.addEventListener('input', async () => {
+      const user = await getCurrentUser();
+      if (!user) {
+        window.location.href = `/login?redirect=/tarea/${task.id}`;
+        return;
+      }
+      window.clearTimeout(timer);
+      timer = window.setTimeout(async () => {
+        await setNotes(task.id, notesEl.value);
+        if (savedEl) {
+          savedEl.hidden = false;
+          window.setTimeout(() => (savedEl.hidden = true), 1500);
+        }
+      }, 500);
+    });
+
+    paint();
+
+    // Cargar datos de la mascota y progreso si no están en memoria
+    await ensureProgressLoaded();
+    paint();
+  }
+
+  document.addEventListener('astro:page-load', initTaskPage);
+  onProgressChange(() => {
+    const panel = document.querySelector<HTMLElement>('[data-controls]');
+    const id = panel?.dataset.task ?? '';
+    const task = taskById(id);
+    if (!panel || !task) return;
+
+    const progress = load();
+    const entry = getTask(task.id);
+    const countEls = document.querySelectorAll('[data-count]');
+    const barEl = panel.querySelector<HTMLElement>('[data-bar]');
+    countEls.forEach((el) => (el.textContent = String(entry.sessions)));
+    if (barEl) barEl.style.width = `${Math.min(100, Math.round((entry.sessions / task.goalSessions) * 100))}%`;
+    panel.dataset.state = stateOf(task, progress);
+
+    panel.querySelectorAll<HTMLButtonElement>('[data-status]').forEach((btn) => {
+      btn.setAttribute('aria-pressed', String(btn.dataset.status === entry.status));
+    });
+  });
+</script>
+
+<style>
+  .page { padding-block: var(--space-s) var(--space-l); }
+
+  .crumbs { display: flex; gap: 0.4em; flex-wrap: wrap; margin-block-end: var(--space-s); }
+
+  .layout { display: grid; gap: var(--space-m); align-items: start; }
+  @media (max-width: 63.99rem) {
+    /* Hueco para la barra fija de registro */
+    .layout { padding-block-end: 4.5rem; }
+  }
+  @media (min-width: 64rem) {
+    .layout { grid-template-columns: minmax(0, 1fr) 20rem; gap: var(--space-xl); }
+  }
+
+  .content { max-width: 68ch; }
+
+  .task-head { display: flex; gap: var(--space-s); align-items: flex-start; margin-block-end: var(--space-s); }
+  .icon-tile--lg { width: 3.5rem; height: 3.5rem; background: color-mix(in srgb, var(--phase) 18%, transparent); color: var(--phase); }
+  .task-head h1 { font-size: var(--step-3); margin-block: var(--space-3xs); }
+  .task-head .badge .dots { margin-inline-end: 0.3em; }
+
+  .lead { font-size: var(--step-1); }
+
+  .cue {
+    display: grid;
+    gap: var(--space-3xs);
+    margin-block-start: var(--space-s);
+    padding: var(--space-xs) var(--space-s);
+    border-left: 3px solid var(--phase);
+    border-radius: 0 var(--radius-s) var(--radius-s) 0;
+    background: var(--bg-sunken);
+  }
+  .cue strong { font-size: var(--step-1); }
+
+  .block { margin-block-start: var(--space-l); }
+  .block h2 { display: flex; align-items: center; gap: 0.4em; margin-block-end: var(--space-xs); font-size: var(--step-1); }
+
+  .steps { display: grid; gap: var(--space-xs); margin: 0; padding: 0; list-style: none; counter-reset: step; }
+  .steps li {
+    position: relative;
+    padding-inline-start: 2.5rem;
+    counter-increment: step;
+  }
+  .steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0; top: -1px;
+    display: grid;
+    place-items: center;
+    width: 1.75rem; height: 1.75rem;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: var(--step--1);
+    font-weight: 700;
+  }
+
+  .tips { display: grid; gap: var(--space-2xs); margin: 0; padding: 0; list-style: none; }
+  .tips li { display: flex; gap: var(--space-2xs); align-items: flex-start; color: var(--text-muted); }
+  .tips li :global(svg) { flex: none; margin-block-start: 0.25em; color: var(--warn); }
+
+  .success { border-left: 3px solid var(--done); }
+
+  .reqs { display: grid; gap: var(--space-2xs); margin: 0; padding: 0; list-style: none; }
+  .reqs li { display: flex; align-items: center; gap: var(--space-2xs); }
+  .reqs__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border-strong); flex: none; }
+  .reqs li.done .reqs__dot { background: var(--done); }
+  .reqs li.done .reqs__state { color: var(--done); }
+
+  .pager {
+    display: grid;
+    gap: var(--space-2xs);
+    margin-block-start: var(--space-xl);
+    padding-block-start: var(--space-s);
+    border-top: 1px solid var(--border);
+  }
+  @media (min-width: 40rem) {
+    .pager { grid-template-columns: 1fr 1fr; }
+  }
+  .pager__link {
+    display: grid;
+    gap: 2px;
+    padding: var(--space-xs);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .pager__link:hover { border-color: var(--accent); }
+  .pager__link--next { text-align: right; }
+</style>

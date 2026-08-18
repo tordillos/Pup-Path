@@ -1,0 +1,467 @@
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { setMemoryState, setActiveDogId, getActiveDogId, reset, setDogName, load } from './progress';
+import { getCurrentUser } from './auth';
+import type { Status, TaskProgress } from '../data/types';
+
+export interface SyncStatus {
+  isSynced: boolean;
+  isSyncing: boolean;
+  lastSyncedAt: string | null;
+  error: string | null;
+}
+
+export interface UserDogItem {
+  id: string;
+  name: string;
+  breed: string | null;
+  shareCode: string | null;
+  isCurrent: boolean;
+  role: 'owner' | 'trainer' | 'viewer';
+  ownerEmail?: string;
+}
+
+let syncStatus: SyncStatus = {
+  isSynced: false,
+  isSyncing: false,
+  lastSyncedAt: null,
+  error: null,
+};
+
+export const SYNC_CHANGE_EVENT = 'pup:sync-change';
+export const DOGS_CHANGE_EVENT = 'pup:dogs-change';
+
+let realtimeChannel: any = null;
+
+function notifySync() {
+  document.dispatchEvent(new CustomEvent(SYNC_CHANGE_EVENT, { detail: syncStatus }));
+}
+
+export function getSyncStatus(): SyncStatus {
+  return syncStatus;
+}
+
+/** Obtiene la lista de perros (propios y compartidos) del usuario directamente desde Supabase */
+export async function getUserDogs(force = false): Promise<UserDogItem[]> {
+  if (!supabase || !isSupabaseConfigured) return [];
+  const user = await getCurrentUser();
+  if (!user) return [];
+
+  try {
+    // 1. Perros propios
+    const { data: ownedDogs, error: ownedError } = await supabase
+      .from('dogs')
+      .select('id, name, breed, share_code, is_current')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: true });
+
+    if (ownedError) {
+      console.error('Error al consultar perros propios:', ownedError);
+      throw ownedError;
+    }
+
+    const list: UserDogItem[] = [];
+    const seenIds = new Set<string>();
+
+    if (ownedDogs) {
+      for (const d of ownedDogs) {
+        if (!seenIds.has(d.id)) {
+          seenIds.add(d.id);
+          list.push({
+            id: d.id,
+            name: d.name,
+            breed: d.breed,
+            shareCode: d.share_code,
+            isCurrent: Boolean(d.is_current),
+            role: 'owner',
+          });
+        }
+      }
+    }
+
+    // 2. Perros compartidos (no bloqueante)
+    try {
+      const { data: memberRows, error: memberError } = await supabase
+        .from('dog_members')
+        .select('role, dog:dogs(id, name, breed, share_code, is_current, user_id)')
+        .eq('user_id', user.id);
+
+      if (!memberError && memberRows) {
+        for (const m of memberRows) {
+          const d: any = m.dog;
+          if (d && !seenIds.has(d.id)) {
+            seenIds.add(d.id);
+            list.push({
+              id: d.id,
+              name: d.name,
+              breed: d.breed,
+              shareCode: d.share_code,
+              isCurrent: Boolean(d.is_current),
+              role: (m.role as any) || 'trainer',
+            });
+          }
+        }
+      }
+    } catch (mErr) {
+      console.warn('Advertencia al consultar perros compartidos:', mErr);
+    }
+
+    return list;
+  } catch (err) {
+    console.error('Error al obtener lista de perros:', err);
+    return [];
+  }
+}
+
+/** Crear una nueva mascota */
+export async function createNewDog(name: string): Promise<{ success: boolean; message: string; dog?: UserDogItem }> {
+  if (!supabase || !isSupabaseConfigured) return { success: false, message: 'Supabase no está configurado.' };
+  const user = await getCurrentUser();
+  if (!user) return { success: false, message: 'Debes iniciar sesión para añadir una mascota.' };
+
+  const cleanName = name.trim();
+  if (!cleanName) return { success: false, message: 'El nombre de la mascota no puede estar vacío.' };
+
+  try {
+    const { data: newDog, error: createError } = await supabase
+      .from('dogs')
+      .insert({
+        user_id: user.id,
+        name: cleanName,
+        is_current: true,
+      })
+      .select('id, name, share_code, breed, is_current')
+      .single();
+
+    if (createError) throw createError;
+
+    await switchActiveDog(newDog.id);
+    document.dispatchEvent(new CustomEvent(DOGS_CHANGE_EVENT));
+
+    return {
+      success: true,
+      message: `¡Mascota "${cleanName}" añadida con éxito!`,
+      dog: {
+        id: newDog.id,
+        name: newDog.name,
+        breed: newDog.breed,
+        shareCode: newDog.share_code,
+        isCurrent: true,
+        role: 'owner',
+      },
+    };
+  } catch (err: any) {
+    console.error('Error al crear mascota:', err);
+    return { success: false, message: err.message || 'Error al crear la mascota.' };
+  }
+}
+
+/** Actualizar el nombre de una mascota */
+export async function updateDogName(dogId: string, name: string): Promise<{ success: boolean; message: string }> {
+  if (!supabase || !isSupabaseConfigured) return { success: false, message: 'Supabase no está configurado.' };
+  const cleanName = name.trim();
+  if (!cleanName) return { success: false, message: 'El nombre no puede estar vacío.' };
+
+  try {
+    const { error } = await supabase
+      .from('dogs')
+      .update({ name: cleanName, updated_at: new Date().toISOString() })
+      .eq('id', dogId);
+
+    if (error) throw error;
+
+    await setDogName(cleanName);
+    document.dispatchEvent(new CustomEvent(DOGS_CHANGE_EVENT));
+    return { success: true, message: 'Nombre actualizado correctamente.' };
+  } catch (err: any) {
+    console.error('Error al actualizar nombre del perro:', err);
+    return { success: false, message: err.message || 'Error al guardar el nuevo nombre.' };
+  }
+}
+
+/** Unirse a un perro compartido mediante código */
+export async function joinSharedDog(code: string): Promise<{ success: boolean; message: string; dogName?: string }> {
+  if (!supabase || !isSupabaseConfigured) return { success: false, message: 'Supabase no está configurado.' };
+  const user = await getCurrentUser();
+  if (!user) return { success: false, message: 'Debes iniciar sesión para unirte.' };
+
+  const cleanCode = code.trim().toUpperCase();
+  if (!cleanCode) return { success: false, message: 'Introduce un código válido.' };
+
+  try {
+    const { data: dog, error: searchError } = await supabase
+      .from('dogs')
+      .select('id, name, user_id')
+      .eq('share_code', cleanCode)
+      .maybeSingle();
+
+    if (searchError || !dog) {
+      return { success: false, message: 'No se encontró ningún perro con ese código de invitación.' };
+    }
+
+    if (dog.user_id === user.id) {
+      return { success: false, message: 'Ya eres el dueño de este perro.' };
+    }
+
+    const { error: insertError } = await supabase
+      .from('dog_members')
+      .upsert({
+        dog_id: dog.id,
+        user_id: user.id,
+        role: 'trainer',
+      }, { onConflict: 'dog_id,user_id' });
+
+    if (insertError) throw insertError;
+
+    await switchActiveDog(dog.id);
+    document.dispatchEvent(new CustomEvent(DOGS_CHANGE_EVENT));
+
+    return { success: true, message: `¡Te has unido al entrenamiento de ${dog.name}!`, dogName: dog.name };
+  } catch (err: any) {
+    console.error('Error al unirse al perro:', err);
+    return { success: false, message: err.message || 'Error al unirse a la mascota compartida.' };
+  }
+}
+
+/** Cambia el perro activo directamente en la base de datos */
+export async function switchActiveDog(dogId: string): Promise<boolean> {
+  if (!supabase || !isSupabaseConfigured) return false;
+  const user = await getCurrentUser();
+  if (!user) return false;
+
+  try {
+    await supabase.from('dogs').update({ is_current: false }).eq('user_id', user.id);
+    await supabase.from('dogs').update({ is_current: true }).eq('id', dogId);
+
+    setActiveDogId(dogId);
+    await fetchDogProgress(dogId);
+    subscribeToRealtime(dogId);
+    document.dispatchEvent(new CustomEvent(DOGS_CHANGE_EVENT));
+    return true;
+  } catch (err) {
+    console.error('Error al cambiar de perro:', err);
+    return false;
+  }
+}
+
+/** Obtiene los colaboradores de un perro desde la base de datos */
+export async function getDogCollaborators(dogId: string) {
+  if (!supabase || !isSupabaseConfigured) return [];
+  try {
+    const { data, error } = await supabase
+      .from('dog_members')
+      .select('role, created_at, user:profiles(id, email, full_name)')
+      .eq('dog_id', dogId);
+
+    if (error) throw error;
+    return (data || []).map((row: any) => ({
+      role: row.role,
+      joinedAt: row.created_at,
+      email: row.user?.email || 'Entrenador',
+      name: row.user?.full_name || '',
+    }));
+  } catch (err) {
+    console.error('Error al obtener colaboradores:', err);
+    return [];
+  }
+}
+
+/** Elimina una mascota directamente en la base de datos */
+export async function deleteDog(dogId: string): Promise<{ success: boolean; message: string }> {
+  if (!supabase || !isSupabaseConfigured) return { success: false, message: 'Supabase no está configurado.' };
+  const user = await getCurrentUser();
+  if (!user) return { success: false, message: 'No hay usuario autenticado.' };
+
+  try {
+    const { data: dog, error: fetchErr } = await supabase
+      .from('dogs')
+      .select('id, user_id, name')
+      .eq('id', dogId)
+      .single();
+
+    if (fetchErr || !dog) return { success: false, message: 'Mascota no encontrada.' };
+
+    if (dog.user_id === user.id) {
+      const { error: deleteError } = await supabase.from('dogs').delete().eq('id', dogId);
+      if (deleteError) throw deleteError;
+    } else {
+      const { error: memberError } = await supabase
+        .from('dog_members')
+        .delete()
+        .eq('dog_id', dogId)
+        .eq('user_id', user.id);
+      if (memberError) throw memberError;
+    }
+
+    setActiveDogId(null);
+    const remainingDogs = await getUserDogs(true);
+    if (remainingDogs.length > 0) {
+      await switchActiveDog(remainingDogs[0].id);
+    } else {
+      reset();
+    }
+
+    document.dispatchEvent(new CustomEvent(DOGS_CHANGE_EVENT));
+    return { success: true, message: `Mascota "${dog.name}" eliminada correctamente.` };
+  } catch (err: any) {
+    console.error('Error al eliminar perro:', err);
+    return { success: false, message: err.message || 'Error al eliminar mascota.' };
+  }
+}
+
+/** Resetea a cero el progreso de una mascota directamente en la base de datos */
+export async function resetDogProgress(dogId: string): Promise<boolean> {
+  if (!supabase || !isSupabaseConfigured) return false;
+  try {
+    await supabase.from('task_progress').delete().eq('dog_id', dogId);
+    await supabase.from('training_sessions').delete().eq('dog_id', dogId);
+
+    reset();
+    await fetchDogProgress(dogId);
+    return true;
+  } catch (err) {
+    console.error('Error al resetear progreso:', err);
+    return false;
+  }
+}
+
+/** Descarga el progreso del perro directamente desde Supabase */
+export async function fetchDogProgress(dogId: string): Promise<void> {
+  if (!supabase || !isSupabaseConfigured) return;
+
+  try {
+    const { data: dog, error: dogError } = await supabase
+      .from('dogs')
+      .select('id, name')
+      .eq('id', dogId)
+      .single();
+
+    if (dogError || !dog) return;
+
+    const { data: remoteProgress, error: progressError } = await supabase
+      .from('task_progress')
+      .select('task_id, status, sessions, notes, updated_at, mastered_at')
+      .eq('dog_id', dogId);
+
+    if (progressError) throw progressError;
+
+    const currentMemory = load();
+    const tasks: Record<string, TaskProgress> = {};
+
+    if (remoteProgress) {
+      for (const row of remoteProgress) {
+        tasks[row.task_id] = {
+          status: row.status as Status,
+          sessions: row.sessions ?? 0,
+          notes: row.notes ?? undefined,
+          masteredAt: row.mastered_at ?? undefined,
+          updatedAt: row.updated_at,
+        };
+      }
+    }
+
+    setMemoryState({
+      version: 1,
+      dogName: dog.name,
+      startedAt: currentMemory.startedAt || new Date().toISOString(),
+      tasks,
+    });
+  } catch (err) {
+    console.error('Error al descargar progreso:', err);
+  }
+}
+
+/** Suscribe a cambios en tiempo real vía WebSocket */
+function subscribeToRealtime(dogId: string) {
+  if (!supabase) return;
+
+  if (realtimeChannel) {
+    supabase.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+  }
+
+  realtimeChannel = supabase
+    .channel(`public:task_progress:dog_${dogId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'task_progress',
+        filter: `dog_id=eq.${dogId}`,
+      },
+      () => {
+        fetchDogProgress(dogId);
+      }
+    )
+    .subscribe();
+}
+
+/** Carga o inicializa la sesión y descarga los datos desde la red */
+export async function syncWithCloud(): Promise<boolean> {
+  if (!supabase || !isSupabaseConfigured) return false;
+
+  const user = await getCurrentUser();
+  if (!user) {
+    syncStatus = { isSynced: false, isSyncing: false, lastSyncedAt: null, error: null };
+    notifySync();
+    return false;
+  }
+
+  syncStatus.isSyncing = true;
+  syncStatus.error = null;
+  notifySync();
+
+  try {
+    // 1. Asegurar perfil
+    const metadataFullName = user.user_metadata?.full_name;
+    if (metadataFullName) {
+      await supabase.from('profiles').upsert({
+        id: user.id,
+        email: user.email,
+        full_name: metadataFullName,
+        updated_at: new Date().toISOString(),
+      });
+    }
+
+    // 2. Obtener lista de perros del usuario fresca
+    const dogs = await getUserDogs(true);
+    let currentDogId = getActiveDogId();
+
+    if (currentDogId && !dogs.some((d) => d.id === currentDogId)) {
+      currentDogId = null;
+    }
+
+    if (!currentDogId && dogs.length > 0) {
+      const active = dogs.find((d) => d.isCurrent) || dogs[0];
+      currentDogId = active.id;
+    }
+
+    if (currentDogId) {
+      setActiveDogId(currentDogId);
+      await fetchDogProgress(currentDogId);
+      subscribeToRealtime(currentDogId);
+    } else {
+      setActiveDogId(null);
+      reset();
+    }
+
+    syncStatus = {
+      isSynced: true,
+      isSyncing: false,
+      lastSyncedAt: new Date().toLocaleTimeString(),
+      error: null,
+    };
+    notifySync();
+    return true;
+  } catch (err: any) {
+    console.error('Error al conectar con la base de datos en red:', err);
+    syncStatus = {
+      isSynced: false,
+      isSyncing: false,
+      lastSyncedAt: null,
+      error: err.message || 'Error al conectar con la base de datos',
+    };
+    notifySync();
+    return false;
+  }
+}

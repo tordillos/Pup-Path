@@ -1,0 +1,142 @@
+---
+import Icon from './Icon.astro';
+import type { Task } from '../data/types';
+
+interface Props {
+  task: Task;
+}
+
+const { task } = Astro.props;
+---
+
+<aside class="controls card" data-controls data-task={task.id}>
+  <p class="controls__blocked small" data-blocked hidden></p>
+
+  <div class="controls__sessions">
+    <div class="controls__count">
+      <strong><span data-count>0</span> <span class="muted">/ {task.goalSessions}</span></strong>
+      <span class="small muted">sesiones registradas</span>
+    </div>
+    <span class="controls__track" aria-hidden="true">
+      <span class="controls__bar" data-bar style="width:0%"></span>
+    </span>
+  </div>
+
+  <div class="cluster controls__buttons">
+    <button class="btn btn--primary controls__add" data-add>
+      <Icon name="check" size={18} /> Registrar sesión
+    </button>
+    <button class="btn btn--sm" data-remove aria-label="Quitar una sesión">−</button>
+  </div>
+
+  <div class="segmented" role="group" aria-label="Estado de la tarea">
+    <button type="button" data-status="pendiente" aria-pressed="false">Pendiente</button>
+    <button type="button" data-status="progreso" aria-pressed="false">En curso</button>
+    <button type="button" data-status="dominado" aria-pressed="false">Dominado</button>
+  </div>
+
+  <label class="notes">
+    <span class="small muted">Notas de entrenamiento</span>
+    <textarea data-notes rows="3" placeholder="Qué ha funcionado, con qué se distrae, dónde entrenáis…"></textarea>
+    <span class="small muted notes__saved" data-saved hidden>Guardado</span>
+  </label>
+</aside>
+
+<!-- Barra compacta al alcance del pulgar. Solo en pantallas pequeñas. -->
+<div class="quickbar" data-quickbar>
+  <span class="quickbar__count">
+    <strong><span data-count>0</span> / {task.goalSessions}</strong>
+    <span class="small muted">sesiones</span>
+  </span>
+  <button class="btn btn--primary quickbar__add" data-add>
+    <Icon name="check" size={18} /> Registrar sesión
+  </button>
+</div>
+
+<style>
+  .controls { display: grid; gap: var(--space-s); }
+
+  /* Barra fija: solo hasta 64rem, donde el panel no puede vivir en un lateral. */
+  .quickbar {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 4.5rem;
+    z-index: 8;
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: var(--space-2xs) var(--space-s);
+    padding-bottom: calc(var(--space-2xs) + env(safe-area-inset-bottom, 0px));
+    background: var(--bg-elevated);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -6px 18px rgb(0 0 0 / 0.12);
+  }
+  .quickbar__count { display: grid; }
+  .quickbar__count strong { font-variant-numeric: tabular-nums; }
+  .quickbar__add { flex: 1; }
+
+  /* Desde 48rem la navegación sube a la cabecera y ya no hay tab bar debajo. */
+  @media (min-width: 48rem) {
+    .quickbar { bottom: 0; }
+  }
+
+  @media (min-width: 64rem) {
+    .controls { position: sticky; top: calc(56px + var(--space-s)); }
+    .quickbar { display: none; }
+  }
+
+  .controls__blocked {
+    padding: var(--space-2xs) var(--space-xs);
+    border-radius: var(--radius-s);
+    background: var(--warn-soft);
+    color: var(--warn);
+  }
+  .controls__blocked a { color: inherit; font-weight: 650; }
+
+  .controls__sessions { display: grid; gap: var(--space-3xs); }
+  .controls__count { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2xs); }
+  .controls__count strong { font-size: var(--step-2); font-variant-numeric: tabular-nums; }
+
+  .controls__track { display: block; height: 8px; border-radius: var(--radius-full); background: var(--bg-sunken); overflow: hidden; }
+  .controls__bar { display: block; height: 100%; background: var(--accent); transition: width 0.4s var(--ease); }
+
+  .controls__buttons { flex-wrap: nowrap; }
+  .controls__add { flex: 1; }
+
+  .segmented {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--radius-full);
+    background: var(--bg-sunken);
+  }
+  .segmented button {
+    min-height: 40px;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: var(--step--1);
+    font-weight: 600;
+  }
+  .segmented button[aria-pressed='true'] {
+    background: var(--bg-elevated);
+    color: var(--text);
+    box-shadow: var(--shadow-s);
+  }
+  .segmented button[data-status='dominado'][aria-pressed='true'] { color: var(--done); }
+  .segmented button[data-status='progreso'][aria-pressed='true'] { color: var(--warn); }
+
+  .notes { display: grid; gap: var(--space-3xs); }
+  .notes textarea {
+    width: 100%;
+    padding: var(--space-2xs);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s);
+    background: var(--bg);
+    color: var(--text);
+    resize: vertical;
+  }
+  .notes__saved { color: var(--accent); }
+</style>
