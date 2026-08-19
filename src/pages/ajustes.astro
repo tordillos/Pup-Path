@@ -145,6 +145,23 @@ import Icon from '../components/Icon.astro';
     </div>
   </dialog>
 
+  <!-- MODAL: Quitar entrenador -->
+  <dialog id="modal-remove-member" class="modal-dialog">
+    <div class="modal-content card">
+      <h3>¿Quitar a este entrenador?</h3>
+      <p class="small">
+        <strong id="modal-remove-member-name">Este entrenador</strong> perderá el acceso al progreso de esta mascota.
+      </p>
+      <p class="small muted">
+        No se borra nada de lo que haya registrado. Podrá volver a entrar si le pasas otra vez el código de invitación.
+      </p>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="btn-cancel-remove-member">Cancelar</button>
+        <button type="button" class="btn btn--danger" id="btn-confirm-remove-member">Sí, quitar acceso</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- MODAL: Resetear Progreso -->
   <dialog id="modal-reset-progress" class="modal-dialog">
     <div class="modal-content card">
@@ -193,6 +210,7 @@ import Icon from '../components/Icon.astro';
     resetDogProgress,
     createNewDog,
     updateDogName,
+    removeDogMember,
     DOGS_CHANGE_EVENT,
   } from '../scripts/sync';
 
@@ -223,6 +241,12 @@ import Icon from '../components/Icon.astro';
     const inputAddDogName = document.getElementById('input-add-dog-name') as HTMLInputElement;
     const btnCancelAddDog = document.getElementById('btn-cancel-add-dog');
     const openAddDogBtn = document.getElementById('open-add-dog-modal-btn');
+
+    const modalRemoveMember = document.getElementById('modal-remove-member') as HTMLDialogElement;
+    const modalRemoveMemberName = document.getElementById('modal-remove-member-name');
+    const btnCancelRemoveMember = document.getElementById('btn-cancel-remove-member');
+    const btnConfirmRemoveMember = document.getElementById('btn-confirm-remove-member');
+    let miembroAQuitar: { userId: string; nombre: string } | null = null;
 
     const modalReset = document.getElementById('modal-reset-progress') as HTMLDialogElement;
     const modalResetDogName = document.getElementById('modal-reset-dog-name');
@@ -326,11 +350,33 @@ import Icon from '../components/Icon.astro';
         if (!collaboratorsList) return;
         if (collabs.length === 0) {
           collaboratorsList.innerHTML = `<li class="small muted">Solo tú tienes acceso actualmente.</li>`;
-        } else {
-          collaboratorsList.innerHTML = collabs
-            .map((c) => `<li class="small">👤 ${c.name || c.email} <span class="badge badge--accent">${c.role === 'owner' ? 'Dueño' : 'Entrenador'}</span></li>`)
-            .join('');
+          return;
         }
+
+        collaboratorsList.innerHTML = collabs
+          .map((c) => {
+            const nombre = c.name || c.email;
+            // Quitar entrenadores es cosa del propietario, y nunca a sí mismo.
+            const puedeQuitar = esPropietario && c.role !== 'owner' && c.userId;
+            const boton = puedeQuitar
+              ? `<button type="button" class="btn btn--sm collab__remove" data-remove-member="${c.userId}" data-member-name="${nombre}">Quitar</button>`
+              : '';
+            return `
+              <li class="small collab">
+                <span class="collab__name">👤 ${nombre}</span>
+                <span class="badge badge--accent">${c.role === 'owner' ? 'Dueño' : 'Entrenador'}</span>
+                ${boton}
+              </li>`;
+          })
+          .join('');
+
+        collaboratorsList.querySelectorAll<HTMLButtonElement>('[data-remove-member]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            miembroAQuitar = { userId: btn.dataset.removeMember || '', nombre: btn.dataset.memberName || 'este entrenador' };
+            if (modalRemoveMemberName) modalRemoveMemberName.textContent = miembroAQuitar.nombre;
+            modalRemoveMember?.showModal();
+          });
+        });
       });
 
       dogsList.innerHTML = dogs
@@ -430,6 +476,21 @@ import Icon from '../components/Icon.astro';
       }
     });
 
+    // MODAL: Quitar entrenador
+    btnCancelRemoveMember?.addEventListener('click', () => modalRemoveMember?.close());
+    btnConfirmRemoveMember?.addEventListener('click', async () => {
+      if (!activeDogId || !miembroAQuitar) return;
+      modalRemoveMember?.close();
+      const res = await removeDogMember(activeDogId, miembroAQuitar.userId);
+      miembroAQuitar = null;
+      if (res.success) {
+        toastSuccess(res.message);
+        await refreshDogsAndSharing();
+      } else {
+        toastError(res.message);
+      }
+    });
+
     // MODAL: Resetear Progreso
     openResetModalBtn?.addEventListener('click', () => {
       if (!activeDogId) return;
@@ -519,21 +580,6 @@ import Icon from '../components/Icon.astro';
     display: grid;
     gap: var(--space-2xs);
   }
-  .dog-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--space-xs);
-    border: 1px solid var(--border);
-  }
-  .dog-item--active {
-    border-color: var(--accent);
-    background: var(--accent-soft);
-  }
-  .dog-info {
-    display: grid;
-    gap: 2px;
-  }
 
   .share-box {
     display: grid;
@@ -565,11 +611,6 @@ import Icon from '../components/Icon.astro';
     list-style: none;
     padding: 0;
     margin: 0;
-  }
-  .collaborators-list li {
-    display: flex;
-    align-items: center;
-    gap: var(--space-xs);
   }
 
   .warn-box {
@@ -615,5 +656,45 @@ import Icon from '../components/Icon.astro';
     justify-content: flex-end;
     gap: var(--space-xs);
     margin-top: var(--space-2xs);
+  }
+</style>
+
+<style is:global>
+  /* Estas listas las escribe el script con innerHTML: si las reglas fueran
+     con ámbito, Astro les exigiría un atributo que ese HTML no lleva y se
+     quedarían sin estilo. */
+  .dog-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-xs);
+    padding: var(--space-xs);
+    border: 1px solid var(--border);
+  }
+  .dog-item--active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .dog-info {
+    display: grid;
+    gap: 2px;
+  }
+
+  .collaborators-list li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+  }
+  .collab__name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .collab__remove {
+    flex: none;
+    color: var(--warn);
+    border-color: color-mix(in srgb, var(--warn) 40%, var(--border));
   }
 </style>

@@ -261,6 +261,7 @@ export async function getDogCollaborators(dogId: string) {
 
     if (error) throw error;
     return (data || []).map((row: any) => ({
+      userId: row.user?.id as string | undefined,
       role: row.role,
       joinedAt: row.created_at,
       email: row.user?.email || 'Entrenador',
@@ -269,6 +270,40 @@ export async function getDogCollaborators(dogId: string) {
   } catch (err) {
     console.error('Error al obtener colaboradores:', err);
     return [];
+  }
+}
+
+/**
+ * Retira a un entrenador de una mascota. Solo el propietario: el RLS de
+ * dog_members ya lo exige, esto evita además el viaje de ida y vuelta.
+ */
+export async function removeDogMember(
+  dogId: string,
+  memberUserId: string
+): Promise<{ success: boolean; message: string }> {
+  if (!supabase || !isSupabaseConfigured) return { success: false, message: 'Supabase no está configurado.' };
+  const user = await getCurrentUser();
+  if (!user) return { success: false, message: 'No hay usuario autenticado.' };
+
+  try {
+    const { data: dog } = await supabase.from('dogs').select('user_id').eq('id', dogId).maybeSingle();
+    if (!dog || dog.user_id !== user.id) {
+      return { success: false, message: 'Solo el propietario puede quitar entrenadores.' };
+    }
+
+    const { error } = await supabase
+      .from('dog_members')
+      .delete()
+      .eq('dog_id', dogId)
+      .eq('user_id', memberUserId);
+
+    if (error) throw error;
+
+    document.dispatchEvent(new CustomEvent(DOGS_CHANGE_EVENT));
+    return { success: true, message: 'Entrenador retirado del entrenamiento.' };
+  } catch (err: any) {
+    console.error('Error al quitar entrenador:', err);
+    return { success: false, message: err.message || 'No se pudo quitar al entrenador.' };
   }
 }
 
