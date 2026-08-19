@@ -10,7 +10,13 @@ let inMemoryState: ProgressState = {
   tasks: {},
 };
 
-let activeDogId: string | null = null;
+const ACTIVE_DOG_KEY = 'pup-path:active-dog';
+
+// La mascota activa se guarda en el propio dispositivo y no en la columna
+// is_current de la tabla: esa columna es del registro de la mascota, así que
+// en una mascota compartida cada entrenador le pisaría la selección al otro.
+let activeDogId: string | null =
+  typeof localStorage !== 'undefined' ? localStorage.getItem(ACTIVE_DOG_KEY) : null;
 let isFetching = false;
 
 export function getActiveDogId(): string | null {
@@ -19,6 +25,23 @@ export function getActiveDogId(): string | null {
 
 export function setActiveDogId(dogId: string | null): void {
   activeDogId = dogId;
+  try {
+    if (dogId) localStorage.setItem(ACTIVE_DOG_KEY, dogId);
+    else localStorage.removeItem(ACTIVE_DOG_KEY);
+  } catch {
+    // Modo privado o almacenamiento lleno: seguimos con el valor en memoria.
+  }
+}
+
+/** Deja la sesión sin mascota: ni nombre, ni progreso, ni selección guardada. */
+export function clearActiveDog(): void {
+  setActiveDogId(null);
+  setMemoryState({
+    version: 1,
+    dogName: '',
+    startedAt: new Date().toISOString(),
+    tasks: {},
+  });
 }
 
 export function load(): ProgressState {
@@ -58,21 +81,31 @@ export async function ensureProgressLoaded(force = false): Promise<ProgressState
       .eq('user_id', user.id)
       .order('is_current', { ascending: false });
 
-    let activeDog = ownedDogs?.find((d) => d.is_current) || ownedDogs?.[0];
+    // Mascotas compartidas por otros usuarios: también son candidatas.
+    const { data: memberRows } = await supabase
+      .from('dog_members')
+      .select('dog:dogs(id, name, is_current)')
+      .eq('user_id', user.id);
 
-    // Si no tiene propios, buscar compartidos
+    const candidates: any[] = [
+      ...(ownedDogs || []),
+      ...((memberRows || []).map((m: any) => m.dog).filter(Boolean)),
+    ];
+
+    // Respeta la mascota elegida en este dispositivo si sigue siendo accesible.
+    let activeDog =
+      candidates.find((d) => d.id === activeDogId) ||
+      candidates.find((d) => d.is_current) ||
+      candidates[0];
+
     if (!activeDog) {
-      const { data: memberRows } = await supabase
-        .from('dog_members')
-        .select('role, dog:dogs(id, name, is_current)')
-        .eq('user_id', user.id);
-      if (memberRows && memberRows[0]?.dog) {
-        activeDog = memberRows[0].dog as any;
-      }
+      // Cuenta recién creada, o el usuario acaba de borrar su última mascota.
+      clearActiveDog();
+      return inMemoryState;
     }
 
-    if (activeDog) {
-      activeDogId = activeDog.id;
+    {
+      setActiveDogId(activeDog.id);
       inMemoryState.dogName = activeDog.name;
 
       // 2. Obtener progreso de las tareas

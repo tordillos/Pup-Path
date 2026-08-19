@@ -305,14 +305,19 @@ const howTo = [
 
     if (!name) {
       if (nameEl) nameEl.textContent = 'tu mascota';
-      if (suggestionsDesc) suggestionsDesc.textContent = 'Añade una mascota en Ajustes para empezar su plan.';
+      if (suggestionsDesc) suggestionsDesc.textContent = 'Primero elige con qué perro vas a entrenar.';
       if (summary) summary.hidden = true;
       if (list) {
+        // Dos caminos con el mismo peso: crear la tuya, o entrar en una que
+        // ya está entrenando otra persona con su código de invitación.
         list.innerHTML = `
-        <div class="card empty" style="grid-column: 1 / -1; text-align: center; padding: var(--space-m);">
-          <p class="lead" style="margin-bottom: var(--space-2xs);">🐾 No tienes ninguna mascota activa</p>
-          <p class="small muted" style="margin-bottom: var(--space-s);">Para registrar sesiones y hacer seguimiento, añade una mascota en Ajustes o únete a una compartida.</p>
-          <a href="/ajustes" class="btn btn--primary">Gestionar mascotas en Ajustes</a>
+        <div class="card empty onboarding" style="grid-column: 1 / -1;">
+          <p class="lead">🐾 Aún no tienes ninguna mascota</p>
+          <p class="small muted">Crea la tuya para empezar su plan desde cero, o únete con un código al entrenamiento de un perro que ya exista.</p>
+          <div class="cluster onboarding__actions">
+            <a href="/ajustes#mis-mascotas" class="btn btn--primary">Crear mi mascota</a>
+            <a href="/ajustes#unirse" class="btn">Tengo un código de invitación</a>
+          </div>
         </div>`;
       }
       return;
@@ -533,4 +538,9 @@ const howTo = [
     overflow: hidden;
   }
   .progress-mini__bar { display: block; height: 100%; background: var(--accent); }
+
+  /* Estado inicial de una cuenta que todavía no tiene mascota */
+  .onboarding { display: grid; gap: var(--space-2xs); justify-items: center; text-align: center; padding: var(--space-m); }
+  .onboarding .lead { margin: 0; }
+  .onboarding__actions { justify-content: center; margin-block-start: var(--space-2xs); }
 </style>

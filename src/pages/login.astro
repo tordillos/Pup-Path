@@ -31,8 +31,12 @@ import Icon from '../components/Icon.astro';
         </div>
 
         <div class="field" id="field-dog-name" hidden>
-          <label for="dog-name-input">Nombre de tu perro / mascota <span class="required-asterisk">*</span></label>
+          <label for="dog-name-input">Nombre de tu perro / mascota <span class="small muted">(opcional)</span></label>
           <input id="dog-name-input" type="text" placeholder="Ej. Maya" autocomplete="off" />
+          <p class="small muted field-hint">
+            Déjalo vacío si aún no vas a crear una: podrás añadirla después, o unirte con un código
+            a una mascota que ya esté entrenando otra persona.
+          </p>
         </div>
 
         <div class="field">
@@ -160,7 +164,7 @@ import Icon from '../components/Icon.astro';
         if (fieldName) fieldName.hidden = false;
         if (fieldDogName) fieldDogName.hidden = false;
         if (nameInput) nameInput.required = true;
-        if (dogNameInput) dogNameInput.required = true;
+        if (dogNameInput) dogNameInput.required = false;
         if (btnOpenForgot) btnOpenForgot.hidden = true;
         if (submitText) submitText.textContent = 'Registrarse';
         if (authTitle) authTitle.textContent = 'Crear cuenta';
@@ -222,11 +226,6 @@ import Icon from '../components/Icon.astro';
         if (!name) {
           toastError('Por favor, indica tu nombre de usuario.');
           nameInput?.focus();
-          return;
-        }
-        if (!dogName) {
-          toastError('Por favor, introduce el nombre de tu perro.');
-          dogNameInput?.focus();
           return;
         }
       }

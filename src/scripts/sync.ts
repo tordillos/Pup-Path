@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { setMemoryState, setActiveDogId, getActiveDogId, reset, setDogName, load } from './progress';
+import { setMemoryState, setActiveDogId, getActiveDogId, clearActiveDog, reset, setDogName, load } from './progress';
 import { getCurrentUser } from './auth';
 import type { Status, TaskProgress } from '../data/types';
 
@@ -31,6 +31,15 @@ export const SYNC_CHANGE_EVENT = 'pup:sync-change';
 export const DOGS_CHANGE_EVENT = 'pup:dogs-change';
 
 let realtimeChannel: any = null;
+
+/** Los RAISE EXCEPTION del RPC ya traen texto para el usuario; el resto, no. */
+function limpiarErrorPostgres(message: string): string {
+  const limpio = (message || '').replace(/^.*?(?:ERROR|error):\s*/, '').trim();
+  if (!limpio || /permission denied|function .* does not exist/i.test(limpio)) {
+    return 'No se pudo completar la operación. Revisa que las migraciones estén aplicadas en Supabase.';
+  }
+  return limpio;
+}
 
 function notifySync() {
   document.dispatchEvent(new CustomEvent(SYNC_CHANGE_EVENT, { detail: syncStatus }));
@@ -188,34 +197,24 @@ export async function joinSharedDog(code: string): Promise<{ success: boolean; m
   if (!cleanCode) return { success: false, message: 'Introduce un código válido.' };
 
   try {
-    const { data: dog, error: searchError } = await supabase
-      .from('dogs')
-      .select('id, name, user_id')
-      .eq('share_code', cleanCode)
-      .maybeSingle();
+    // Vía RPC (SECURITY DEFINER) y no consultando "dogs": quien se une no
+    // tiene permiso de lectura sobre las mascotas ajenas hasta ser miembro,
+    // así que el código no se puede sondear leyendo la tabla.
+    const { data, error } = await supabase.rpc('join_dog_by_code', { p_code: cleanCode });
 
-    if (searchError || !dog) {
-      return { success: false, message: 'No se encontró ningún perro con ese código de invitación.' };
+    if (error) {
+      return { success: false, message: limpiarErrorPostgres(error.message) };
     }
 
-    if (dog.user_id === user.id) {
-      return { success: false, message: 'Ya eres el dueño de este perro.' };
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row?.dog_id) {
+      return { success: false, message: 'No se encontró ninguna mascota con ese código de invitación.' };
     }
 
-    const { error: insertError } = await supabase
-      .from('dog_members')
-      .upsert({
-        dog_id: dog.id,
-        user_id: user.id,
-        role: 'trainer',
-      }, { onConflict: 'dog_id,user_id' });
-
-    if (insertError) throw insertError;
-
-    await switchActiveDog(dog.id);
+    await switchActiveDog(row.dog_id);
     document.dispatchEvent(new CustomEvent(DOGS_CHANGE_EVENT));
 
-    return { success: true, message: `¡Te has unido al entrenamiento de ${dog.name}!`, dogName: dog.name };
+    return { success: true, message: `¡Te has unido al entrenamiento de ${row.dog_name}!`, dogName: row.dog_name };
   } catch (err: any) {
     console.error('Error al unirse al perro:', err);
     return { success: false, message: err.message || 'Error al unirse a la mascota compartida.' };
@@ -229,8 +228,14 @@ export async function switchActiveDog(dogId: string): Promise<boolean> {
   if (!user) return false;
 
   try {
-    await supabase.from('dogs').update({ is_current: false }).eq('user_id', user.id);
-    await supabase.from('dogs').update({ is_current: true }).eq('id', dogId);
+    // is_current solo se toca en las mascotas propias: en una compartida
+    // marcarla cambiaría también la selección del otro entrenador. La
+    // elección real de este dispositivo vive en setActiveDogId.
+    const { data: owned } = await supabase.from('dogs').select('id').eq('user_id', user.id);
+    if (owned?.some((d) => d.id === dogId)) {
+      await supabase.from('dogs').update({ is_current: false }).eq('user_id', user.id);
+      await supabase.from('dogs').update({ is_current: true }).eq('id', dogId);
+    }
 
     setActiveDogId(dogId);
     await fetchDogProgress(dogId);
@@ -292,12 +297,10 @@ export async function deleteDog(dogId: string): Promise<{ success: boolean; mess
       if (memberError) throw memberError;
     }
 
-    setActiveDogId(null);
+    clearActiveDog();
     const remainingDogs = await getUserDogs(true);
     if (remainingDogs.length > 0) {
       await switchActiveDog(remainingDogs[0].id);
-    } else {
-      reset();
     }
 
     document.dispatchEvent(new CustomEvent(DOGS_CHANGE_EVENT));
@@ -441,8 +444,8 @@ export async function syncWithCloud(): Promise<boolean> {
       await fetchDogProgress(currentDogId);
       subscribeToRealtime(currentDogId);
     } else {
-      setActiveDogId(null);
-      reset();
+      // Cuenta sin mascota todavía: es un estado válido, no un error.
+      clearActiveDog();
     }
 
     syncStatus = {

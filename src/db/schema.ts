@@ -18,7 +18,7 @@ export const dogs = pgTable('dogs', {
   name: text('name').notNull().default('Mi Perro'),
   breed: text('breed').default('Border Collie'),
   birthDate: text('birth_date'),
-  shareCode: text('share_code'),
+  shareCode: text('share_code').unique(),
   isCurrent: boolean('is_current').default(true).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

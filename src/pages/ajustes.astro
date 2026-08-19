@@ -24,7 +24,7 @@ import Icon from '../components/Icon.astro';
     </section>
 
     <!-- Mis Mascotas / Selector de perro activo -->
-    <section class="card block" id="dogs-selector-section">
+    <section class="card block" id="mis-mascotas">
       <div class="section-head-between">
         <h2><Icon name="dog" size={20} /> Mis Mascotas</h2>
         <button class="btn btn--sm btn--primary" id="open-add-dog-modal-btn">
@@ -78,7 +78,7 @@ import Icon from '../components/Icon.astro';
     </section>
 
     <!-- Unirse a una mascota existente con código -->
-    <section class="card block">
+    <section class="card block" id="unirse">
       <h2><Icon name="target" size={20} /> Unirse a una Mascota Compartida</h2>
       <p class="small muted">
         ¿Alguien te ha dado un código de invitación? Introdúcelo aquí para unirte a su entrenamiento.
@@ -251,14 +251,20 @@ import Icon from '../components/Icon.astro';
       const dogs = await getUserDogs();
       if (!dogsList) return;
 
+      // Las secciones que hablan de "la mascota activa" no tienen nada que
+      // decir mientras no haya ninguna: se ocultan en vez de quedarse vacías.
+      const dogDependent = ['active-dog-card', 'share-dog-card', 'reset-card', 'delete-card'];
+      dogDependent.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.hidden = dogs.length === 0;
+      });
+
       if (dogs.length === 0) {
-        dogsList.innerHTML = `<div class="empty card"><p class="small muted">No tienes ninguna mascota todavía. Añade una para empezar.</p></div>`;
+        dogsList.innerHTML = `
+          <div class="empty card">
+            <p class="small muted">Todavía no entrenas a ninguna mascota. Crea la tuya, o pide su código de invitación a quien ya esté entrenando a un perro y únete más abajo.</p>
+          </div>`;
         activeDogId = null;
-        if (currentDogNameDisplay) currentDogNameDisplay.textContent = 'Ninguna mascota';
-        if (shareDogName) shareDogName.textContent = 'tu mascota';
-        if (resetDogName) resetDogName.textContent = 'esta mascota';
-        if (deleteDogName) deleteDogName.textContent = 'esta mascota';
-        if (shareCodeDisplay) shareCodeDisplay.textContent = '------';
         if (collaboratorsList) collaboratorsList.innerHTML = `<li class="small muted">Sin mascota activa</li>`;
         return;
       }
