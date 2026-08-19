@@ -34,13 +34,14 @@ import Icon from '../components/Icon.astro';
       <div id="dogs-list" class="dogs-list">
         <p class="small muted">Cargando tus mascotas...</p>
       </div>
+      <p class="small pending-note" id="pending-requests" hidden></p>
     </section>
 
     <!-- Datos de la Mascota Activa con botón para abrir modal de editar nombre -->
     <section class="card block" id="active-dog-card">
       <div class="section-head-between">
         <h2><Icon name="dog" size={20} /> Mascota Activa</h2>
-        <button class="btn btn--sm" id="open-edit-name-modal-btn">
+        <button class="btn btn--sm" id="open-edit-name-modal-btn" hidden>
           <Icon name="sparkles" size={14} /> Cambiar nombre
         </button>
       </div>
@@ -81,7 +82,8 @@ import Icon from '../components/Icon.astro';
     <section class="card block" id="unirse">
       <h2><Icon name="target" size={20} /> Unirse a una Mascota Compartida</h2>
       <p class="small muted">
-        ¿Alguien te ha dado un código de invitación? Introdúcelo aquí para unirte a su entrenamiento.
+        ¿Alguien te ha dado un código de invitación? Introdúcelo aquí para pedir acceso. El propietario
+        tendrá que aceptarte antes de que puedas entrenar a su mascota.
       </p>
       <form id="join-form" class="cluster">
         <input type="text" id="join-code-input" placeholder="Ej. A8F3K2" maxlength="10" style="text-transform: uppercase; font-family: monospace; font-weight: bold; width: 140px;" required />
@@ -211,6 +213,8 @@ import Icon from '../components/Icon.astro';
     createNewDog,
     updateDogName,
     removeDogMember,
+    approveDogMember,
+    getMyPendingRequests,
     DOGS_CHANGE_EVENT,
   } from '../scripts/sync';
 
@@ -305,6 +309,17 @@ import Icon from '../components/Icon.astro';
       const dogs = await getUserDogs();
       if (!dogsList) return;
 
+      // Aviso de las solicitudes propias que siguen en cola.
+      const pendientes = await getMyPendingRequests();
+      const pendingNote = document.getElementById('pending-requests');
+      if (pendingNote) {
+        pendingNote.hidden = pendientes.length === 0;
+        pendingNote.textContent =
+          pendientes.length === 1
+            ? `⏳ Has pedido unirte a ${pendientes[0].dogName}. Aparecerá aquí cuando su propietario acepte.`
+            : `⏳ Tienes ${pendientes.length} solicitudes esperando aprobación.`;
+      }
+
       // Las secciones que hablan de "la mascota activa" no tienen nada que
       // decir mientras no haya ninguna: se ocultan en vez de quedarse vacías.
       const dogDependent = ['active-dog-card', 'share-dog-card', 'reset-card', 'delete-card'];
@@ -333,6 +348,7 @@ import Icon from '../components/Icon.astro';
       const esPropietario = activeDog.role === 'owner';
       const shareCard = document.getElementById('share-dog-card');
       if (shareCard) shareCard.hidden = !esPropietario;
+      if (openEditNameBtn) openEditNameBtn.hidden = !esPropietario;
       const resetCard = document.getElementById('reset-card');
       if (resetCard) resetCard.hidden = !esPropietario;
       aplicarRolEnEliminar(esPropietario, activeDog.name);
@@ -353,19 +369,31 @@ import Icon from '../components/Icon.astro';
           return;
         }
 
-        collaboratorsList.innerHTML = collabs
+        // Las solicitudes van primero: son las que piden una decisión.
+        const orden = [...collabs].sort((a, b) => Number(b.status === 'pending') - Number(a.status === 'pending'));
+
+        collaboratorsList.innerHTML = orden
           .map((c) => {
             const nombre = c.name || c.email;
-            // Quitar entrenadores es cosa del propietario, y nunca a sí mismo.
-            const puedeQuitar = esPropietario && c.role !== 'owner' && c.userId;
-            const boton = puedeQuitar
-              ? `<button type="button" class="btn btn--sm collab__remove" data-remove-member="${c.userId}" data-member-name="${nombre}">Quitar</button>`
-              : '';
+            const pendiente = c.status === 'pending';
+            const gestionable = esPropietario && c.role !== 'owner' && c.userId;
+
+            const acciones = !gestionable
+              ? ''
+              : pendiente
+                ? `<button type="button" class="btn btn--sm btn--primary" data-approve-member="${c.userId}">Aceptar</button>
+                   <button type="button" class="btn btn--sm collab__remove" data-remove-member="${c.userId}" data-member-name="${nombre}">Rechazar</button>`
+                : `<button type="button" class="btn btn--sm collab__remove" data-remove-member="${c.userId}" data-member-name="${nombre}">Quitar</button>`;
+
+            const etiqueta = pendiente
+              ? '<span class="badge badge--warn">Pendiente</span>'
+              : `<span class="badge badge--accent">${c.role === 'owner' ? 'Dueño' : 'Entrenador'}</span>`;
+
             return `
-              <li class="small collab">
-                <span class="collab__name">👤 ${nombre}</span>
-                <span class="badge badge--accent">${c.role === 'owner' ? 'Dueño' : 'Entrenador'}</span>
-                ${boton}
+              <li class="small collab${pendiente ? ' collab--pending' : ''}">
+                <span class="collab__name">${pendiente ? '⏳' : '👤'} ${nombre}</span>
+                ${etiqueta}
+                ${acciones}
               </li>`;
           })
           .join('');
@@ -375,6 +403,21 @@ import Icon from '../components/Icon.astro';
             miembroAQuitar = { userId: btn.dataset.removeMember || '', nombre: btn.dataset.memberName || 'este entrenador' };
             if (modalRemoveMemberName) modalRemoveMemberName.textContent = miembroAQuitar.nombre;
             modalRemoveMember?.showModal();
+          });
+        });
+
+        collaboratorsList.querySelectorAll<HTMLButtonElement>('[data-approve-member]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            if (!activeDogId) return;
+            btn.disabled = true;
+            const res = await approveDogMember(activeDogId, btn.dataset.approveMember || '');
+            if (res.success) {
+              toastSuccess(res.message);
+              await refreshDogsAndSharing();
+            } else {
+              btn.disabled = false;
+              toastError(res.message);
+            }
           });
         });
       });
@@ -696,5 +739,18 @@ import Icon from '../components/Icon.astro';
     flex: none;
     color: var(--warn);
     border-color: color-mix(in srgb, var(--warn) 40%, var(--border));
+  }
+  .collab--pending {
+    padding: var(--space-3xs) var(--space-2xs);
+    border-radius: var(--radius-s);
+    background: var(--warn-soft);
+  }
+  .collab--pending .collab__name { font-weight: 600; }
+  .pending-note {
+    margin-block-start: var(--space-2xs);
+    padding: var(--space-2xs) var(--space-xs);
+    border-radius: var(--radius-s);
+    background: var(--warn-soft);
+    color: var(--warn);
   }
 </style>

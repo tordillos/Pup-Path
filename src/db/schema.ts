@@ -37,6 +37,10 @@ export const dogMembers = pgTable(
     role: text('role', { enum: ['owner', 'trainer', 'viewer'] })
       .notNull()
       .default('trainer'),
+    // Una solicitud nace pendiente: hasta que el dueño la acepta no da acceso.
+    status: text('status', { enum: ['pending', 'active'] })
+      .notNull()
+      .default('pending'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [

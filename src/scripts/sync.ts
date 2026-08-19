@@ -91,8 +91,9 @@ export async function getUserDogs(force = false): Promise<UserDogItem[]> {
     try {
       const { data: memberRows, error: memberError } = await supabase
         .from('dog_members')
-        .select('role, dog:dogs(id, name, breed, share_code, is_current, user_id)')
-        .eq('user_id', user.id);
+        .select('role, status, dog:dogs(id, name, breed, share_code, is_current, user_id)')
+        .eq('user_id', user.id)
+        .eq('status', 'active');
 
       if (!memberError && memberRows) {
         for (const m of memberRows) {
@@ -190,7 +191,9 @@ export async function updateDogName(dogId: string, name: string): Promise<{ succ
 }
 
 /** Unirse a un perro compartido mediante código */
-export async function joinSharedDog(code: string): Promise<{ success: boolean; message: string; dogName?: string }> {
+export async function joinSharedDog(
+  code: string
+): Promise<{ success: boolean; message: string; dogName?: string; pending?: boolean }> {
   if (!supabase || !isSupabaseConfigured) return { success: false, message: 'Supabase no está configurado.' };
   const user = await getCurrentUser();
   if (!user) return { success: false, message: 'Debes iniciar sesión para unirte.' };
@@ -211,6 +214,18 @@ export async function joinSharedDog(code: string): Promise<{ success: boolean; m
     const row = Array.isArray(data) ? data[0] : data;
     if (!row?.dog_id) {
       return { success: false, message: 'No se encontró ninguna mascota con ese código de invitación.' };
+    }
+
+    // Pendiente: la solicitud queda en cola y no da acceso todavía, así que
+    // no tiene sentido cambiar la mascota activa.
+    if (row.member_status !== 'active') {
+      document.dispatchEvent(new CustomEvent(DOGS_CHANGE_EVENT));
+      return {
+        success: true,
+        pending: true,
+        message: `Solicitud enviada. ${row.dog_name} aparecerá cuando su propietario te acepte.`,
+        dogName: row.dog_name,
+      };
     }
 
     await switchActiveDog(row.dog_id);
@@ -256,19 +271,74 @@ export async function getDogCollaborators(dogId: string) {
   try {
     const { data, error } = await supabase
       .from('dog_members')
-      .select('role, created_at, user:profiles(id, email, full_name)')
+      .select('role, status, created_at, user:profiles(id, email, full_name)')
       .eq('dog_id', dogId);
 
     if (error) throw error;
     return (data || []).map((row: any) => ({
       userId: row.user?.id as string | undefined,
       role: row.role,
+      status: (row.status as 'pending' | 'active') || 'active',
       joinedAt: row.created_at,
       email: row.user?.email || 'Entrenador',
       name: row.user?.full_name || '',
     }));
   } catch (err) {
     console.error('Error al obtener colaboradores:', err);
+    return [];
+  }
+}
+
+/** Acepta una solicitud pendiente. Solo el propietario, vía RLS. */
+export async function approveDogMember(
+  dogId: string,
+  memberUserId: string
+): Promise<{ success: boolean; message: string }> {
+  if (!supabase || !isSupabaseConfigured) return { success: false, message: 'Supabase no está configurado.' };
+
+  try {
+    const { error } = await supabase
+      .from('dog_members')
+      .update({ status: 'active' })
+      .eq('dog_id', dogId)
+      .eq('user_id', memberUserId);
+
+    if (error) throw error;
+
+    document.dispatchEvent(new CustomEvent(DOGS_CHANGE_EVENT));
+    return { success: true, message: 'Entrenador aceptado. Ya puede registrar sesiones.' };
+  } catch (err: any) {
+    console.error('Error al aceptar entrenador:', err);
+    return { success: false, message: err.message || 'No se pudo aceptar al entrenador.' };
+  }
+}
+
+export interface PendingRequest {
+  dogId: string;
+  dogName: string;
+}
+
+/** Solicitudes propias todavía sin aprobar, para avisar al que espera. */
+export async function getMyPendingRequests(): Promise<PendingRequest[]> {
+  if (!supabase || !isSupabaseConfigured) return [];
+  const user = await getCurrentUser();
+  if (!user) return [];
+
+  try {
+    const { data, error } = await supabase
+      .from('dog_members')
+      .select('dog_id, dog:dogs(name)')
+      .eq('user_id', user.id)
+      .eq('status', 'pending');
+
+    if (error) throw error;
+    return (data || []).map((row: any) => ({
+      dogId: row.dog_id,
+      // El RLS oculta la mascota hasta la aprobación: sin nombre, se avisa igual.
+      dogName: row.dog?.name || 'una mascota',
+    }));
+  } catch (err) {
+    console.error('Error al consultar solicitudes pendientes:', err);
     return [];
   }
 }
