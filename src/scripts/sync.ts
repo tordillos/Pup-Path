@@ -103,7 +103,9 @@ export async function getUserDogs(force = false): Promise<UserDogItem[]> {
               id: d.id,
               name: d.name,
               breed: d.breed,
-              shareCode: d.share_code,
+              // El código de invitación es del propietario: no se expone a
+              // los entrenadores invitados aunque la fila sea legible.
+              shareCode: null,
               isCurrent: Boolean(d.is_current),
               role: (m.role as any) || 'trainer',
             });
@@ -285,7 +287,9 @@ export async function deleteDog(dogId: string): Promise<{ success: boolean; mess
 
     if (fetchErr || !dog) return { success: false, message: 'Mascota no encontrada.' };
 
-    if (dog.user_id === user.id) {
+    const esPropietario = dog.user_id === user.id;
+
+    if (esPropietario) {
       const { error: deleteError } = await supabase.from('dogs').delete().eq('id', dogId);
       if (deleteError) throw deleteError;
     } else {
@@ -304,7 +308,12 @@ export async function deleteDog(dogId: string): Promise<{ success: boolean; mess
     }
 
     document.dispatchEvent(new CustomEvent(DOGS_CHANGE_EVENT));
-    return { success: true, message: `Mascota "${dog.name}" eliminada correctamente.` };
+    return {
+      success: true,
+      message: esPropietario
+        ? `Mascota "${dog.name}" eliminada correctamente.`
+        : `Has salido del entrenamiento de "${dog.name}".`,
+    };
   } catch (err: any) {
     console.error('Error al eliminar perro:', err);
     return { success: false, message: err.message || 'Error al eliminar mascota.' };

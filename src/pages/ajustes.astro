@@ -104,8 +104,8 @@ import Icon from '../components/Icon.astro';
 
     <!-- Eliminar Mascota -->
     <section class="card block danger" id="delete-card">
-      <h2><Icon name="shield" size={20} /> Eliminar Mascota</h2>
-      <p class="small muted">
+      <h2><Icon name="shield" size={20} /> <span id="delete-card-title">Eliminar Mascota</span></h2>
+      <p class="small muted" id="delete-card-desc">
         Elimina por completo a <strong id="delete-dog-name">esta mascota</strong>, su código de invitación y todo su historial de entrenamiento en la nube.
       </p>
       <div>
@@ -165,11 +165,11 @@ import Icon from '../components/Icon.astro';
   <!-- MODAL: Eliminar Mascota -->
   <dialog id="modal-delete-dog" class="modal-dialog">
     <div class="modal-content card">
-      <h3>¿Eliminar mascota definitivamente?</h3>
-      <p class="small">
+      <h3 id="modal-delete-title">¿Eliminar mascota definitivamente?</h3>
+      <p class="small" id="modal-delete-question">
         ¿Estás seguro de que quieres eliminar a <strong id="modal-delete-dog-name">esta mascota</strong>?
       </p>
-      <p class="small muted" style="color: var(--warn);">
+      <p class="small muted" id="modal-delete-warn" style="color: var(--warn);">
         ⚠️ Esta acción eliminará permanentemente la mascota, su código de invitación y todo su historial de la base de datos en la nube. No se puede deshacer.
       </p>
       <div class="modal-actions">
@@ -247,6 +247,36 @@ import Icon from '../components/Icon.astro';
     let activeDogId: string | null = null;
     let activeDogName = 'Mi Perro';
 
+    // La tarjeta roja significa cosas distintas según quién mire: el
+    // propietario borra la mascota; el entrenador invitado solo se sale.
+    function aplicarRolEnEliminar(esPropietario: boolean, nombre: string) {
+      const titulo = document.getElementById('delete-card-title');
+      const desc = document.getElementById('delete-card-desc');
+      const boton = document.getElementById('open-delete-modal-btn');
+      const modalTitulo = document.getElementById('modal-delete-title');
+      const modalPregunta = document.getElementById('modal-delete-question');
+      const modalAviso = document.getElementById('modal-delete-warn');
+      const modalConfirmar = document.getElementById('btn-confirm-delete');
+
+      if (esPropietario) {
+        if (titulo) titulo.textContent = 'Eliminar Mascota';
+        if (desc) desc.innerHTML = `Elimina por completo a <strong>${nombre}</strong>, su código de invitación y todo su historial de entrenamiento en la nube.`;
+        if (boton) boton.textContent = 'Eliminar esta mascota';
+        if (modalTitulo) modalTitulo.textContent = '¿Eliminar mascota definitivamente?';
+        if (modalPregunta) modalPregunta.innerHTML = `¿Estás seguro de que quieres eliminar a <strong>${nombre}</strong>?`;
+        if (modalAviso) modalAviso.textContent = '⚠️ Esta acción eliminará permanentemente la mascota, su código de invitación y todo su historial de la base de datos en la nube. No se puede deshacer.';
+        if (modalConfirmar) modalConfirmar.textContent = 'Eliminar definitivamente';
+      } else {
+        if (titulo) titulo.textContent = 'Dejar de entrenar';
+        if (desc) desc.innerHTML = `Sales del entrenamiento compartido de <strong>${nombre}</strong>. La mascota y su historial siguen intactos para su propietario.`;
+        if (boton) boton.textContent = 'Salir de este entrenamiento';
+        if (modalTitulo) modalTitulo.textContent = '¿Dejar de entrenar a esta mascota?';
+        if (modalPregunta) modalPregunta.innerHTML = `Perderás el acceso al progreso de <strong>${nombre}</strong>.`;
+        if (modalAviso) modalAviso.textContent = 'No se borra nada: el propietario conserva la mascota y todo su historial. Podrás volver a unirte con el código de invitación.';
+        if (modalConfirmar) modalConfirmar.textContent = 'Sí, salir del entrenamiento';
+      }
+    }
+
     async function refreshDogsAndSharing() {
       const dogs = await getUserDogs();
       if (!dogsList) return;
@@ -273,6 +303,15 @@ import Icon from '../components/Icon.astro';
       const activeDog = dogs.find((d) => d.id === activeDogId) || dogs[0];
       activeDogId = activeDog.id;
       activeDogName = activeDog.name;
+
+      // Un entrenador invitado no reparte invitaciones de una mascota ajena
+      // ni la borra: para él "salir" significa dejar de entrenarla.
+      const esPropietario = activeDog.role === 'owner';
+      const shareCard = document.getElementById('share-dog-card');
+      if (shareCard) shareCard.hidden = !esPropietario;
+      const resetCard = document.getElementById('reset-card');
+      if (resetCard) resetCard.hidden = !esPropietario;
+      aplicarRolEnEliminar(esPropietario, activeDog.name);
 
       if (currentDogNameDisplay) currentDogNameDisplay.textContent = activeDog.name;
       if (shareDogName) shareDogName.textContent = activeDog.name;
