@@ -317,10 +317,6 @@ import Icon from '../components/Icon.astro';
     gap: var(--space-s);
   }
 
-  .field {
-    display: grid;
-    gap: var(--space-3xs);
-  }
   .field-header {
     display: flex;
     justify-content: space-between;
@@ -347,19 +343,6 @@ import Icon from '../components/Icon.astro';
     color: color-mix(in srgb, var(--accent) 80%, black);
   }
 
-  .field input {
-    min-height: 44px;
-    padding: 0 var(--space-xs);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-s);
-    background: var(--bg);
-    color: var(--text);
-    font-size: var(--step-0);
-  }
-  .field input:focus {
-    outline: 2px solid var(--accent);
-    border-color: transparent;
-  }
 
   .submit-btn {
     width: 100%;
@@ -413,16 +396,8 @@ import Icon from '../components/Icon.astro';
     padding: var(--space-m);
     box-shadow: 0 20px 40px rgba(0,0,0,0.3);
   }
-  .modal-input {
-    width: 100%;
-    min-height: 44px;
-    padding: 0 var(--space-xs);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-s);
-    background: var(--bg);
-    color: var(--text);
-    margin-block: var(--space-3xs) var(--space-xs);
-  }
+  /* El aspecto lo pone global.css; aquí solo su hueco dentro del modal. */
+  .modal-input { margin-block: var(--space-3xs) var(--space-xs); }
   .modal-actions {
     display: flex;
     justify-content: flex-end;

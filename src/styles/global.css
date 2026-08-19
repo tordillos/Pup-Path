@@ -123,6 +123,77 @@ a:hover { text-decoration-color: currentColor; }
 .btn--ghost { background: transparent; border-color: transparent; }
 .btn--sm { min-height: 36px; padding: 0 var(--space-xs); }
 
+/* Campos de formulario — una sola definición para toda la app.
+   Antes cada página redefinía lo suyo y los que no lo hacían salían con el
+   fondo blanco del navegador, que en modo oscuro cantaba muchísimo. */
+input:not([type='checkbox']):not([type='radio']):not([type='file']),
+textarea,
+select {
+  width: 100%;
+  min-height: 44px;               /* misma área táctil que .btn */
+  padding: 0 var(--space-xs);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-s);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: var(--step-0);
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+textarea {
+  padding: var(--space-2xs) var(--space-xs);
+  line-height: 1.5;
+  resize: vertical;
+}
+select { appearance: none; padding-inline-end: var(--space-m); }
+
+input::placeholder,
+textarea::placeholder { color: var(--text-muted); opacity: 1; }
+
+/* Un solo indicador de foco: borde verde y halo. Sin outline encima, que es
+   lo que dibujaba el segundo recuadro claro. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+input:disabled,
+textarea:disabled,
+select:disabled { background: var(--bg-sunken); color: var(--text-muted); cursor: not-allowed; }
+
+input[aria-invalid='true'] {
+  border-color: var(--warn);
+}
+
+/* El autorrelleno de WebKit pinta su propio fondo claro e ignora background.
+   El único modo de taparlo es una sombra interior del grosor del campo. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text);
+  -webkit-box-shadow: inset 0 0 0 100px var(--bg-elevated);
+  caret-color: var(--text);
+}
+
+/* Campo con su etiqueta encima */
+.field { display: grid; gap: var(--space-3xs); }
+.field > label { font-size: var(--step--1); font-weight: 600; }
+.field--inline { display: flex; gap: var(--space-2xs); align-items: center; }
+.field--inline input { width: auto; flex: 1; }
+
+/* Código de invitación: pocos caracteres, monoespaciado y sin ambigüedad */
+.input-code {
+  width: 9ch;
+  flex: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;

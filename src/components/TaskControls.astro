@@ -129,14 +129,7 @@ const { task } = Astro.props;
   .segmented button[data-status='progreso'][aria-pressed='true'] { color: var(--warn); }
 
   .notes { display: grid; gap: var(--space-3xs); }
-  .notes textarea {
-    width: 100%;
-    padding: var(--space-2xs);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-s);
-    background: var(--bg);
-    color: var(--text);
-    resize: vertical;
-  }
+  /* El aspecto del campo lo pone global.css. */
+  .notes textarea { font-size: var(--step--1); }
   .notes__saved { color: var(--accent); }
 </style>

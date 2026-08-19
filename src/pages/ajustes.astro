@@ -86,7 +86,7 @@ import Icon from '../components/Icon.astro';
         tendrá que aceptarte antes de que puedas entrenar a su mascota.
       </p>
       <form id="join-form" class="cluster">
-        <input type="text" id="join-code-input" placeholder="Ej. A8F3K2" maxlength="10" style="text-transform: uppercase; font-family: monospace; font-weight: bold; width: 140px;" required />
+        <input type="text" id="join-code-input" class="input-code" placeholder="A8F3K2" maxlength="6" autocapitalize="characters" autocomplete="off" spellcheck="false" required />
         <button type="submit" class="btn btn--primary"><Icon name="check" size={16} /> Unirse</button>
       </form>
       <p class="small" role="status" id="join-status" hidden></p>
@@ -684,16 +684,8 @@ import Icon from '../components/Icon.astro';
     padding: var(--space-m);
     box-shadow: 0 20px 40px rgba(0,0,0,0.3);
   }
-  .modal-input {
-    width: 100%;
-    min-height: 44px;
-    padding: 0 var(--space-xs);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-s);
-    background: var(--bg);
-    color: var(--text);
-    margin-block: var(--space-2xs) var(--space-xs);
-  }
+  /* El aspecto lo pone global.css; aquí solo su hueco dentro del modal. */
+  .modal-input { margin-block: var(--space-2xs) var(--space-xs); }
   .modal-actions {
     display: flex;
     justify-content: flex-end;
