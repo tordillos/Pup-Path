@@ -419,11 +419,13 @@ export async function getTrainingHistory(dogId: string): Promise<TrainingHistory
       days[key] = (days[key] || 0) + 1;
     }
 
-    // El calendario arranca en el alta de la mascota aunque ese día no se
-    // entrenara: es "desde dónde empezaste".
-    const startedAt = dog?.created_at
-      ? toLocalDayKey(new Date(dog.created_at))
-      : Object.keys(days).sort()[0] || null;
+    // "Desde dónde empezaste" es el alta de la mascota, pero nunca puede ser
+    // posterior a la primera sesión: al unirse a una mascota compartida, o al
+    // importar historial, hay actividad anterior al registro.
+    const primeraSesion = Object.keys(days).sort()[0] || null;
+    const alta = dog?.created_at ? toLocalDayKey(new Date(dog.created_at)) : null;
+    const startedAt =
+      alta && primeraSesion ? (alta < primeraSesion ? alta : primeraSesion) : alta || primeraSesion;
 
     return { days, startedAt };
   } catch (err) {

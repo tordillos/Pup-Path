@@ -62,6 +62,48 @@ const categories = [
       </section>
 
       <section class="block">
+        <h2><Icon name="clock" size={20} /> Días entrenados</h2>
+
+        <div class="cal-streaks">
+          <article class="card cal-streak cal-streak--current">
+            <span class="cal-streak__emoji" aria-hidden="true">🔥</span>
+            <strong data-streak-current>0</strong>
+            <span class="small muted">racha actual</span>
+          </article>
+          <article class="card cal-streak">
+            <span class="cal-streak__emoji" aria-hidden="true">🏆</span>
+            <strong data-streak-best>0</strong>
+            <span class="small muted">mejor racha</span>
+          </article>
+          <article class="card cal-streak">
+            <span class="cal-streak__emoji" aria-hidden="true">📅</span>
+            <strong data-total-days>0</strong>
+            <span class="small muted">días entrenados</span>
+          </article>
+          <article class="card cal-streak">
+            <span class="cal-streak__emoji" aria-hidden="true">🐾</span>
+            <strong data-total-sessions>0</strong>
+            <span class="small muted">sesiones</span>
+          </article>
+        </div>
+
+        <p class="small muted cal-note" data-cal-empty hidden>
+          Todavía no hay ningún día marcado. Registra una sesión desde la ficha de cualquier tarea y aparecerá aquí.
+        </p>
+
+        <div class="cal-months" data-months></div>
+
+        <p class="cal-legend small muted" data-cal-legend hidden>
+          <span>Menos</span>
+          <span class="cal-legend__cell" data-level="0"></span>
+          <span class="cal-legend__cell" data-level="1"></span>
+          <span class="cal-legend__cell" data-level="2"></span>
+          <span class="cal-legend__cell" data-level="3"></span>
+          <span>Más</span>
+        </p>
+      </section>
+
+      <section class="block">
         <h2><Icon name="flag" size={20} /> Por fase</h2>
         <ul class="bars">
           {phases.map((phase) => (
@@ -100,7 +142,8 @@ const categories = [
 </BaseLayout>
 
 <script>
-  import { load, ensureProgressLoaded } from '../scripts/progress';
+  import { load, ensureProgressLoaded, getActiveDogId, TRAINING_DAYS_EVENT } from '../scripts/progress';
+  import { getTrainingHistory, toLocalDayKey } from '../scripts/sync';
   import { stateOf, stats } from '../scripts/engine';
   import { orderedTasks, tasks, tasksByPhase } from '../data/tasks';
   import { phaseById, phases } from '../data/phases';
@@ -202,6 +245,122 @@ const categories = [
     }
   }
 
+  const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  // La semana empieza en lunes, como los calendarios de aquí.
+  const DIAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+
+  function nivel(sesiones: number): number {
+    if (sesiones <= 0) return 0;
+    if (sesiones === 1) return 1;
+    if (sesiones <= 3) return 2;
+    return 3;
+  }
+
+  /** Días consecutivos con sesión terminando hoy (o ayer: hoy aún da tiempo). */
+  function rachaActual(days: Record<string, number>): number {
+    const cursor = new Date();
+    if (!days[toLocalDayKey(cursor)]) {
+      cursor.setDate(cursor.getDate() - 1);
+      if (!days[toLocalDayKey(cursor)]) return 0;
+    }
+    let racha = 0;
+    while (days[toLocalDayKey(cursor)]) {
+      racha++;
+      cursor.setDate(cursor.getDate() - 1);
+    }
+    return racha;
+  }
+
+  function mejorRacha(days: Record<string, number>): number {
+    let mejor = 0;
+    let actual = 0;
+    let anterior: Date | null = null;
+
+    for (const clave of Object.keys(days).sort()) {
+      const [y, m, d] = clave.split('-').map(Number);
+      const fecha = new Date(y, m - 1, d);
+      if (anterior) {
+        const diff = Math.round((fecha.getTime() - anterior.getTime()) / 86400000);
+        actual = diff === 1 ? actual + 1 : 1;
+      } else {
+        actual = 1;
+      }
+      mejor = Math.max(mejor, actual);
+      anterior = fecha;
+    }
+    return mejor;
+  }
+
+  function pintarMes(anio: number, mes: number, days: Record<string, number>, inicio: string, hoy: string): string {
+    const totalDias = new Date(anio, mes + 1, 0).getDate();
+    // getDay() da 0 para domingo; se desplaza para que la rejilla empiece en lunes.
+    const hueco = (new Date(anio, mes, 1).getDay() + 6) % 7;
+
+    const celdas: string[] = [];
+    for (let i = 0; i < hueco; i++) celdas.push('<span class="cal-day cal-day--empty"></span>');
+
+    for (let d = 1; d <= totalDias; d++) {
+      const clave = `${anio}-${String(mes + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const sesiones = days[clave] || 0;
+      const clases = ['cal-day'];
+      if (clave === hoy) clases.push('cal-day--today');
+      if (clave === inicio) clases.push('cal-day--start');
+      if (clave > hoy) clases.push('cal-day--future');
+
+      const etiqueta = sesiones
+        ? `${d} de ${MESES[mes]}: ${sesiones} ${sesiones === 1 ? 'sesión' : 'sesiones'}`
+        : `${d} de ${MESES[mes]}: sin entrenar`;
+
+      celdas.push(`<span class="${clases.join(' ')}" data-level="${nivel(sesiones)}" title="${etiqueta}">${d}</span>`);
+    }
+
+    return `
+      <article class="card cal-month">
+        <h3 class="cal-month__title">${MESES[mes]} <span class="muted">${anio}</span></h3>
+        <div class="cal-weekdays" aria-hidden="true">${DIAS.map((d) => `<span>${d}</span>`).join('')}</div>
+        <div class="cal-days">${celdas.join('')}</div>
+      </article>`;
+  }
+
+  async function pintarCalendario() {
+    const contenedor = document.querySelector<HTMLElement>('[data-months]');
+    const vacio = document.querySelector<HTMLElement>('[data-cal-empty]');
+    const leyenda = document.querySelector<HTMLElement>('[data-cal-legend]');
+    const dogId = getActiveDogId();
+    if (!contenedor || !dogId) return;
+
+    const { days, startedAt } = await getTrainingHistory(dogId);
+    const hoy = toLocalDayKey(new Date());
+    const inicio = startedAt || hoy;
+
+    const totalDias = Object.keys(days).length;
+    const totalSesiones = Object.values(days).reduce((a, b) => a + b, 0);
+
+    const set = (sel: string, valor: number) => {
+      const el = document.querySelector(sel);
+      if (el) el.textContent = String(valor);
+    };
+    set('[data-streak-current]', rachaActual(days));
+    set('[data-streak-best]', mejorRacha(days));
+    set('[data-total-days]', totalDias);
+    set('[data-total-sessions]', totalSesiones);
+
+    if (vacio) vacio.hidden = totalDias > 0;
+    if (leyenda) leyenda.hidden = totalDias === 0;
+
+    // Del alta de la mascota al mes actual, sin huecos y con el mes en curso
+    // primero, que es el que se mira.
+    const [ay, am] = inicio.split('-').map(Number);
+    const ahora = new Date();
+    const meses: string[] = [];
+    const cursor = new Date(ay, am - 1, 1);
+    while (cursor <= ahora) {
+      meses.push(pintarMes(cursor.getFullYear(), cursor.getMonth(), days, inicio, hoy));
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+    contenedor.innerHTML = meses.reverse().join('');
+  }
+
   async function initProgreso() {
     const spinner = document.getElementById('progreso-spinner');
     const noPetCard = document.getElementById('progreso-no-pet-card');
@@ -227,9 +386,11 @@ const categories = [
     if (progresoContent) progresoContent.hidden = false;
 
     paint();
+    pintarCalendario();
   }
 
   document.addEventListener('astro:page-load', initProgreso);
+  document.addEventListener(TRAINING_DAYS_EVENT, pintarCalendario);
   onProgressChange(paint);
 </script>
 
@@ -340,4 +501,92 @@ const categories = [
       grid-column: 1 / -1;
     }
   }
+</style>
+
+<style is:global>
+  /* Global y no con ámbito: las rejillas del calendario las escribe el script
+     con innerHTML, y a ese HTML no le llega el atributo de ámbito de Astro. */
+  .cal-streaks {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-xs);
+    margin-block-end: var(--space-s);
+  }
+  @media (min-width: 40rem) {
+    .cal-streaks { grid-template-columns: repeat(4, 1fr); }
+  }
+  .cal-streak {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    text-align: center;
+    padding: var(--space-s) var(--space-2xs);
+  }
+  .cal-streak strong { font-size: var(--step-2); line-height: 1; font-variant-numeric: tabular-nums; }
+  .cal-streak__emoji { font-size: 1.25rem; line-height: 1; }
+  .cal-streak--current { border-color: var(--accent); background: var(--accent-soft); }
+  .cal-streak--current strong { color: var(--accent); }
+
+  .cal-note { margin-block-end: var(--space-s); }
+
+  .cal-months {
+    display: grid;
+    gap: var(--space-s);
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  }
+
+  .cal-month { display: grid; gap: var(--space-2xs); padding: var(--space-s); }
+  .cal-month__title { font-size: var(--step-0); margin: 0; }
+
+  .cal-weekdays,
+  .cal-days {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .cal-weekdays {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-align: center;
+  }
+
+  .cal-day {
+    display: grid;
+    place-items: center;
+    aspect-ratio: 1;
+    border-radius: var(--radius-s);
+    background: var(--bg-sunken);
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+  }
+  .cal-day--empty { background: none; }
+  .cal-day--future { opacity: 0.35; }
+
+  /* Escala de intensidad: cuantas más sesiones ese día, más sólido el verde. */
+  .cal-day[data-level='1'] { background: color-mix(in srgb, var(--accent) 32%, var(--bg-sunken)); color: var(--text); }
+  .cal-day[data-level='2'] { background: color-mix(in srgb, var(--accent) 65%, var(--bg-sunken)); color: #fff; }
+  .cal-day[data-level='3'] { background: var(--accent); color: #fff; font-weight: 700; }
+
+  .cal-day--today { outline: 2px solid var(--text); outline-offset: 1px; }
+  /* El día en que empezó todo */
+  .cal-day--start { box-shadow: inset 0 0 0 2px var(--warn); }
+
+  .cal-legend {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-block-start: var(--space-s);
+  }
+  .cal-legend__cell {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    background: var(--bg-sunken);
+  }
+  .cal-legend__cell[data-level='1'] { background: color-mix(in srgb, var(--accent) 32%, var(--bg-sunken)); }
+  .cal-legend__cell[data-level='2'] { background: color-mix(in srgb, var(--accent) 65%, var(--bg-sunken)); }
+  .cal-legend__cell[data-level='3'] { background: var(--accent); }
 </style>
