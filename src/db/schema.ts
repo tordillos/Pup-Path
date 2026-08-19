@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, boolean, uuid, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, integer, boolean, uuid, uniqueIndex, index } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const profiles = pgTable('profiles', {
@@ -65,17 +65,22 @@ export const taskProgress = pgTable(
   ]
 );
 
-export const trainingSessions = pgTable('training_sessions', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  dogId: uuid('dog_id')
-    .references(() => dogs.id, { onDelete: 'cascade' })
-    .notNull(),
-  taskId: text('task_id').notNull(),
-  durationMinutes: integer('duration_minutes').default(5),
-  rating: integer('rating'), // 1 a 5
-  notes: text('notes'),
-  performedAt: timestamp('performed_at', { withTimezone: true }).defaultNow().notNull(),
-});
+export const trainingSessions = pgTable(
+  'training_sessions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    dogId: uuid('dog_id')
+      .references(() => dogs.id, { onDelete: 'cascade' })
+      .notNull(),
+    taskId: text('task_id').notNull(),
+    durationMinutes: integer('duration_minutes').default(5),
+    rating: integer('rating'), // 1 a 5
+    notes: text('notes'),
+    performedAt: timestamp('performed_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  // El calendario lee todo el historial de una mascota ordenado por fecha.
+  (table) => [index('training_sessions_dog_date_idx').on(table.dogId, table.performedAt)]
+);
 
 // Relations for relational queries
 export const profilesRelations = relations(profiles, ({ many }) => ({

@@ -1,0 +1,1 @@
+CREATE INDEX "training_sessions_dog_date_idx" ON "training_sessions" USING btree ("dog_id","performed_at");

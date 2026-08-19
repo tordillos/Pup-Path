@@ -34,6 +34,10 @@ const isActive = (href: string) => (href === '/' ? path === '/' : path.startsWit
         <Icon name="flag" size={18} />
         <span>Timeline</span>
       </a>
+      <a href="/calendario" class:list={['nav-link', { active: isActive('/calendario') }]} aria-current={isActive('/calendario') ? 'page' : undefined} data-auth-only hidden>
+        <Icon name="clock" size={18} />
+        <span>Días</span>
+      </a>
       <a href="/progreso" class:list={['nav-link', { active: isActive('/progreso') }]} aria-current={isActive('/progreso') ? 'page' : undefined} data-auth-only hidden>
         <Icon name="chart" size={18} />
         <span>Progreso</span>

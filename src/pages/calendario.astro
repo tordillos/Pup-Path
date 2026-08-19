@@ -1,0 +1,290 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Icon from '../components/Icon.astro';
+---
+
+<BaseLayout title="Calendario">
+  <div class="container page">
+    <header class="page-head">
+      <h1><Icon name="clock" size={24} /> Calendario de entrenamiento</h1>
+      <p class="muted">Cada día que registras una sesión se marca aquí. La constancia importa más que la duración.</p>
+    </header>
+
+    <section class="streaks" data-streaks hidden>
+      <div class="card streak streak--current">
+        <span class="streak__flame" aria-hidden="true">🔥</span>
+        <strong data-streak-current>0</strong>
+        <span class="small muted">racha actual</span>
+      </div>
+      <div class="card streak">
+        <span class="streak__flame" aria-hidden="true">🏆</span>
+        <strong data-streak-best>0</strong>
+        <span class="small muted">mejor racha</span>
+      </div>
+      <div class="card streak">
+        <span class="streak__flame" aria-hidden="true">📅</span>
+        <strong data-total-days>0</strong>
+        <span class="small muted">días entrenados</span>
+      </div>
+      <div class="card streak">
+        <span class="streak__flame" aria-hidden="true">🐾</span>
+        <strong data-total-sessions>0</strong>
+        <span class="small muted">sesiones</span>
+      </div>
+    </section>
+
+    <p class="card empty" data-empty hidden></p>
+
+    <div class="months" data-months></div>
+
+    <footer class="legend small muted" data-legend hidden>
+      <span>Menos</span>
+      <span class="legend__cell" data-level="0"></span>
+      <span class="legend__cell" data-level="1"></span>
+      <span class="legend__cell" data-level="2"></span>
+      <span class="legend__cell" data-level="3"></span>
+      <span>Más</span>
+    </footer>
+  </div>
+</BaseLayout>
+
+<script>
+  import { getCurrentUser } from '../scripts/auth';
+  import { ensureProgressLoaded, getActiveDogId, TRAINING_DAYS_EVENT } from '../scripts/progress';
+  import { getTrainingHistory, toLocalDayKey, DOGS_CHANGE_EVENT } from '../scripts/sync';
+
+  const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  // La semana empieza en lunes, como los calendarios de aquí.
+  const DIAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+
+  function nivel(sesiones: number): number {
+    if (sesiones <= 0) return 0;
+    if (sesiones === 1) return 1;
+    if (sesiones <= 3) return 2;
+    return 3;
+  }
+
+  /** Días consecutivos con sesión terminando hoy (o ayer: hoy aún da tiempo). */
+  function rachaActual(days: Record<string, number>): number {
+    const cursor = new Date();
+    if (!days[toLocalDayKey(cursor)]) {
+      cursor.setDate(cursor.getDate() - 1);
+      if (!days[toLocalDayKey(cursor)]) return 0;
+    }
+    let racha = 0;
+    while (days[toLocalDayKey(cursor)]) {
+      racha++;
+      cursor.setDate(cursor.getDate() - 1);
+    }
+    return racha;
+  }
+
+  function mejorRacha(days: Record<string, number>): number {
+    const claves = Object.keys(days).sort();
+    let mejor = 0;
+    let actual = 0;
+    let anterior: Date | null = null;
+
+    for (const clave of claves) {
+      const [y, m, d] = clave.split('-').map(Number);
+      const fecha = new Date(y, m - 1, d);
+      if (anterior) {
+        const diff = Math.round((fecha.getTime() - anterior.getTime()) / 86400000);
+        actual = diff === 1 ? actual + 1 : 1;
+      } else {
+        actual = 1;
+      }
+      mejor = Math.max(mejor, actual);
+      anterior = fecha;
+    }
+    return mejor;
+  }
+
+  function pintarMes(anio: number, mes: number, days: Record<string, number>, inicio: string, hoy: string): string {
+    const primero = new Date(anio, mes, 1);
+    const totalDias = new Date(anio, mes + 1, 0).getDate();
+    // getDay() da 0 para domingo; se desplaza para que la rejilla empiece en lunes.
+    const hueco = (primero.getDay() + 6) % 7;
+
+    const celdas: string[] = [];
+    for (let i = 0; i < hueco; i++) celdas.push('<span class="day day--empty"></span>');
+
+    for (let d = 1; d <= totalDias; d++) {
+      const clave = `${anio}-${String(mes + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const sesiones = days[clave] || 0;
+      const clases = ['day'];
+      if (clave === hoy) clases.push('day--today');
+      if (clave === inicio) clases.push('day--start');
+      if (clave > hoy) clases.push('day--future');
+
+      const etiqueta = sesiones
+        ? `${d} de ${MESES[mes]}: ${sesiones} ${sesiones === 1 ? 'sesión' : 'sesiones'}`
+        : `${d} de ${MESES[mes]}: sin entrenar`;
+
+      celdas.push(
+        `<span class="${clases.join(' ')}" data-level="${nivel(sesiones)}" title="${etiqueta}"><span class="day__num">${d}</span></span>`
+      );
+    }
+
+    return `
+      <section class="card month">
+        <h2 class="month__title">${MESES[mes]} <span class="muted">${anio}</span></h2>
+        <div class="weekdays" aria-hidden="true">${DIAS.map((d) => `<span>${d}</span>`).join('')}</div>
+        <div class="days">${celdas.join('')}</div>
+      </section>`;
+  }
+
+  async function initCalendario() {
+    const contenedor = document.querySelector<HTMLElement>('[data-months]');
+    const vacio = document.querySelector<HTMLElement>('[data-empty]');
+    const streaks = document.querySelector<HTMLElement>('[data-streaks]');
+    const leyenda = document.querySelector<HTMLElement>('[data-legend]');
+    if (!contenedor) return;
+
+    const user = await getCurrentUser();
+    if (!user) {
+      window.location.href = '/login?redirect=/calendario';
+      return;
+    }
+
+    await ensureProgressLoaded();
+    const dogId = getActiveDogId();
+
+    if (!dogId) {
+      contenedor.innerHTML = '';
+      if (streaks) streaks.hidden = true;
+      if (leyenda) leyenda.hidden = true;
+      if (vacio) {
+        vacio.hidden = false;
+        vacio.innerHTML = 'Aún no tienes ninguna mascota activa. <a href="/ajustes#mis-mascotas">Añade una</a> para empezar a marcar días.';
+      }
+      return;
+    }
+
+    const { days, startedAt } = await getTrainingHistory(dogId);
+    const hoy = toLocalDayKey(new Date());
+    const inicio = startedAt || hoy;
+
+    const totalDias = Object.keys(days).length;
+    const totalSesiones = Object.values(days).reduce((a, b) => a + b, 0);
+
+    if (streaks) {
+      streaks.hidden = false;
+      const set = (sel: string, valor: number) => {
+        const el = streaks.querySelector(sel);
+        if (el) el.textContent = String(valor);
+      };
+      set('[data-streak-current]', rachaActual(days));
+      set('[data-streak-best]', mejorRacha(days));
+      set('[data-total-days]', totalDias);
+      set('[data-total-sessions]', totalSesiones);
+    }
+
+    if (vacio) {
+      vacio.hidden = totalDias > 0;
+      if (totalDias === 0) {
+        vacio.innerHTML = 'Todavía no hay ningún día marcado. Registra una sesión desde la ficha de cualquier tarea y aparecerá aquí.';
+      }
+    }
+
+    // De la fecha de alta de la mascota al mes actual, sin huecos.
+    const [ay, am] = inicio.split('-').map(Number);
+    const ahora = new Date();
+    const meses: string[] = [];
+    const cursor = new Date(ay, am - 1, 1);
+    while (cursor <= ahora) {
+      meses.push(pintarMes(cursor.getFullYear(), cursor.getMonth(), days, inicio, hoy));
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    // El mes en curso primero: es el que se mira.
+    contenedor.innerHTML = meses.reverse().join('');
+    if (leyenda) leyenda.hidden = totalDias === 0;
+  }
+
+  document.addEventListener('astro:page-load', initCalendario);
+  document.addEventListener(TRAINING_DAYS_EVENT, initCalendario);
+  document.addEventListener(DOGS_CHANGE_EVENT, initCalendario);
+</script>
+
+<style>
+  .page { padding-block: var(--space-l); }
+  .page-head { margin-block-end: var(--space-m); }
+  .page-head h1 { display: flex; align-items: center; gap: var(--space-2xs); }
+
+  .streaks {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-xs);
+    margin-block-end: var(--space-m);
+  }
+  @media (min-width: 40rem) {
+    .streaks { grid-template-columns: repeat(4, 1fr); }
+  }
+  .streak { display: grid; justify-items: center; gap: 2px; text-align: center; padding: var(--space-s); }
+  .streak strong { font-size: var(--step-3); line-height: 1; font-variant-numeric: tabular-nums; }
+  .streak__flame { font-size: 1.4rem; line-height: 1; }
+  .streak--current { border-color: var(--accent); background: var(--accent-soft); }
+  .streak--current strong { color: var(--accent); }
+
+  .empty { padding: var(--space-m); text-align: center; }
+
+  .months { display: grid; gap: var(--space-m); }
+  @media (min-width: 48rem) {
+    .months { grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); }
+  }
+
+  .month { display: grid; gap: var(--space-2xs); }
+  .month__title { font-size: var(--step-0); text-transform: capitalize; }
+
+  .weekdays, .days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+  }
+  .weekdays {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-align: center;
+  }
+
+  .day {
+    display: grid;
+    place-items: center;
+    aspect-ratio: 1;
+    border-radius: var(--radius-s);
+    background: var(--bg-sunken);
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+  }
+  .day--empty { background: none; }
+  .day--future { opacity: 0.35; }
+
+  /* Escala de intensidad: cuantas más sesiones ese día, más sólido el verde. */
+  .day[data-level='1'] { background: color-mix(in srgb, var(--accent) 30%, var(--bg-sunken)); color: var(--text); }
+  .day[data-level='2'] { background: color-mix(in srgb, var(--accent) 60%, var(--bg-sunken)); color: #fff; }
+  .day[data-level='3'] { background: var(--accent); color: #fff; font-weight: 700; }
+
+  .day--today { outline: 2px solid var(--text); outline-offset: 1px; }
+  /* El día en que empezó todo */
+  .day--start { box-shadow: inset 0 0 0 2px var(--warn); }
+
+  .legend {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-block-start: var(--space-m);
+  }
+  .legend__cell {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    background: var(--bg-sunken);
+  }
+  .legend__cell[data-level='1'] { background: color-mix(in srgb, var(--accent) 30%, var(--bg-sunken)); }
+  .legend__cell[data-level='2'] { background: color-mix(in srgb, var(--accent) 60%, var(--bg-sunken)); }
+  .legend__cell[data-level='3'] { background: var(--accent); }
+</style>

@@ -31,6 +31,7 @@ npm run db:studio   # Abre panel visual Drizzle Studio
 | `/timeline` | Línea temporal completa con las 6 fases y sus tareas, con progreso por fase. |
 | `/tarea/[id]` | Ficha de una tarea: pasos, consejos, criterio de dominio y controles de registro. |
 | `/progreso` | Panel con anillo de progreso general, avance por fase, por tipo y últimas actualizaciones. |
+| `/calendario` | Días entrenados mes a mes desde el alta de la mascota, con racha actual y mejor racha. |
 | `/ajustes` | Mascotas del usuario, mascota activa, compartir con otros entrenadores, resetear y eliminar. |
 | `/login` | Iniciar sesión o crear cuenta (Email / Contraseña o Google) sincronizada con Supabase. |
 

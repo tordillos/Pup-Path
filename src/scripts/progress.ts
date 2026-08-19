@@ -186,21 +186,64 @@ async function updateAndSave(id: string, patch: Partial<TaskProgress>): Promise<
 
 export const setStatus = (id: string, status: Status) => updateAndSave(id, { status });
 
-export const addSession = (id: string) => {
+export const TRAINING_DAYS_EVENT = 'pup:training-days-change';
+
+/**
+ * Deja constancia de CUÁNDO se entrenó, no solo de cuántas veces. El contador
+ * de task_progress no sirve para el calendario: solo guarda un total y la
+ * última fecha, así que un historial de días hay que escribirlo aparte.
+ */
+async function recordTrainingSession(taskId: string) {
+  if (!supabase || !isSupabaseConfigured || !activeDogId) return;
+  try {
+    await supabase.from('training_sessions').insert({ dog_id: activeDogId, task_id: taskId });
+    document.dispatchEvent(new CustomEvent(TRAINING_DAYS_EVENT));
+  } catch (err) {
+    console.error('Error al registrar la sesión en el historial:', err);
+  }
+}
+
+/** Deshace la última sesión registrada de esa tarea. */
+async function removeLastTrainingSession(taskId: string) {
+  if (!supabase || !isSupabaseConfigured || !activeDogId) return;
+  try {
+    const { data } = await supabase
+      .from('training_sessions')
+      .select('id')
+      .eq('dog_id', activeDogId)
+      .eq('task_id', taskId)
+      .order('performed_at', { ascending: false })
+      .limit(1);
+
+    const last = data?.[0];
+    if (last) {
+      await supabase.from('training_sessions').delete().eq('id', last.id);
+      document.dispatchEvent(new CustomEvent(TRAINING_DAYS_EVENT));
+    }
+  } catch (err) {
+    console.error('Error al deshacer la sesión del historial:', err);
+  }
+}
+
+export const addSession = async (id: string) => {
   const current = getTask(id);
-  return updateAndSave(id, {
+  const state = await updateAndSave(id, {
     sessions: current.sessions + 1,
     status: current.status === 'pendiente' ? 'progreso' : current.status,
   });
+  await recordTrainingSession(id);
+  return state;
 };
 
-export const removeSession = (id: string) => {
+export const removeSession = async (id: string) => {
   const current = getTask(id);
   const nextSessions = Math.max(0, current.sessions - 1);
-  return updateAndSave(id, {
+  const state = await updateAndSave(id, {
     sessions: nextSessions,
     status: nextSessions === 0 && current.status === 'progreso' ? 'pendiente' : current.status,
   });
+  if (current.sessions > 0) await removeLastTrainingSession(id);
+  return state;
 };
 
 export const setNotes = (id: string, notes: string) => updateAndSave(id, { notes });

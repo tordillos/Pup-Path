@@ -29,6 +29,13 @@
       "when": 1787123367315,
       "tag": "0003_fix_join_dog_ambiguity",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787126110433,
+      "tag": "0004_overconfident_mephistopheles",
+      "breakpoints": true
     }
   ]
 }

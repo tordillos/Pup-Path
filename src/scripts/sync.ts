@@ -382,6 +382,56 @@ export async function fetchDogProgress(dogId: string): Promise<void> {
   }
 }
 
+export interface TrainingHistory {
+  /** Sesiones por día, con la fecha en horario local: 'AAAA-MM-DD' -> nº */
+  days: Record<string, number>;
+  /** Primer día con actividad; si no hay ninguno, el alta de la mascota. */
+  startedAt: string | null;
+}
+
+/** Convierte un instante a 'AAAA-MM-DD' en la zona horaria del dispositivo. */
+export function toLocalDayKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** Historial de días entrenados de una mascota, para el calendario. */
+export async function getTrainingHistory(dogId: string): Promise<TrainingHistory> {
+  if (!supabase || !isSupabaseConfigured) return { days: {}, startedAt: null };
+
+  try {
+    const [{ data: sessions, error }, { data: dog }] = await Promise.all([
+      supabase
+        .from('training_sessions')
+        .select('performed_at')
+        .eq('dog_id', dogId)
+        .order('performed_at', { ascending: true }),
+      supabase.from('dogs').select('created_at').eq('id', dogId).maybeSingle(),
+    ]);
+
+    if (error) throw error;
+
+    const days: Record<string, number> = {};
+    for (const row of sessions || []) {
+      const key = toLocalDayKey(new Date(row.performed_at));
+      days[key] = (days[key] || 0) + 1;
+    }
+
+    // El calendario arranca en el alta de la mascota aunque ese día no se
+    // entrenara: es "desde dónde empezaste".
+    const startedAt = dog?.created_at
+      ? toLocalDayKey(new Date(dog.created_at))
+      : Object.keys(days).sort()[0] || null;
+
+    return { days, startedAt };
+  } catch (err) {
+    console.error('Error al obtener el historial de entrenamiento:', err);
+    return { days: {}, startedAt: null };
+  }
+}
+
 /** Suscribe a cambios en tiempo real vía WebSocket */
 function subscribeToRealtime(dogId: string) {
   if (!supabase) return;
